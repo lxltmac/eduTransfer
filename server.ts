@@ -122,6 +122,39 @@ db.exec(`
 
 // 数据库迁移：确保 folders 表存在，并为 files 表添加 folder_id 字段
 try {
+  // 检查 menus 表是否存在
+  const menusTableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='menus'").get();
+  if (!menusTableExists) {
+    console.log('[MIGRATION] Creating menus table...');
+    db.exec(`
+      CREATE TABLE menus (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        route TEXT,
+        icon TEXT,
+        parent_id INTEGER,
+        order_index INTEGER DEFAULT 0,
+        enabled INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(parent_id) REFERENCES menus(id)
+      );
+    `);
+    // 添加默认菜单
+    const defaultMenus = [
+      { name: '仪表盘', route: '/dashboard', icon: 'LayoutDashboard', order_index: 1 },
+      { name: '班级管理', route: '/classes', icon: 'Users', order_index: 2 },
+      { name: '文件管理', route: '/files', icon: 'Folder', order_index: 3 },
+      { name: '分组管理', route: '/groups', icon: 'UserGroup', order_index: 4 },
+      { name: '账号管理', route: '/accounts', icon: 'UserCog', order_index: 5 },
+      { name: '角色权限', route: '/roles', icon: 'Shield', order_index: 6 },
+      { name: '页面管理', route: '/menu', icon: 'Menu', order_index: 7 },
+    ];
+    const insertMenu = db.prepare("INSERT INTO menus (name, route, icon, order_index) VALUES (?, ?, ?, ?)");
+    for (const m of defaultMenus) {
+      insertMenu.run(m.name, m.route, m.icon, m.order_index);
+    }
+  }
+
   // 检查 folders 表是否存在
   const foldersTableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='folders'").get();
   if (!foldersTableExists) {
@@ -714,6 +747,50 @@ async function startServer() {
     }
   });
 
+  // 菜单管理API
+  app.get("/api/menu", (req, res) => {
+    try {
+      const menus = db.prepare("SELECT * FROM menus ORDER BY order_index").all();
+      res.json(Array.isArray(menus) ? menus : []);
+    } catch (e) {
+      console.error('[MENU GET] Error:', e);
+      res.json([]);
+    }
+  });
+
+  app.post("/api/menu", (req, res) => {
+    const { name, route, icon, parent_id, order_index, enabled } = req.body;
+    try {
+      const result = db.prepare("INSERT INTO menus (name, route, icon, parent_id, order_index, enabled) VALUES (?, ?, ?, ?, ?, ?)").run(name, route, icon, parent_id, order_index, enabled ? 1 : 0);
+      res.json({ success: true, id: result.lastInsertRowid });
+    } catch (e) {
+      console.error('[MENU CREATE] Error:', e);
+      res.status(500).json({ success: false, message: "创建菜单失败" });
+    }
+  });
+
+  app.put("/api/menu", (req, res) => {
+    const { id, name, route, icon, parent_id, order_index, enabled } = req.body;
+    try {
+      db.prepare("UPDATE menus SET name = ?, route = ?, icon = ?, parent_id = ?, order_index = ?, enabled = ? WHERE id = ?").run(name, route, icon, parent_id, order_index, enabled ? 1 : 0, id);
+      res.json({ success: true });
+    } catch (e) {
+      console.error('[MENU UPDATE] Error:', e);
+      res.status(500).json({ success: false, message: "更新菜单失败" });
+    }
+  });
+
+  app.delete("/api/menu", (req, res) => {
+    const { id } = req.body;
+    try {
+      db.prepare("DELETE FROM menus WHERE id = ?").run(id);
+      res.json({ success: true });
+    } catch (e) {
+      console.error('[MENU DELETE] Error:', e);
+      res.status(500).json({ success: false, message: "删除菜单失败" });
+    }
+  });
+
   app.get("/api/groups", (req, res) => {
     const { classId } = req.query;
     if (!classId) return res.json([]);
@@ -759,17 +836,19 @@ async function startServer() {
 
   app.put("/api/groups/:groupId", (req, res) => {
     const { name, studentIds } = req.body;
+    console.log('[GROUP UPDATE] Request:', req.body, 'groupId:', req.params.groupId);
     try {
-      db.prepare("UPDATE groups SET name = ? WHERE id = ?").run(name, req.params.groupId);
+      if (name !== undefined) {
+        db.prepare("UPDATE groups SET name = ? WHERE id = ?").run(name, req.params.groupId);
+      }
       
-      if (studentIds) {
-        const clearGroup = db.prepare("UPDATE students SET group_id = NULL WHERE group_id = ?").run(req.params.groupId);
+      if (studentIds !== undefined) {
+        db.prepare("UPDATE students SET group_id = NULL WHERE group_id = ?").run(req.params.groupId);
         if (studentIds.length > 0) {
           const updateStudent = db.prepare("UPDATE students SET group_id = ? WHERE id = ?");
-          const updateMany = db.transaction((ids) => {
-            for (const id of ids) updateStudent.run(req.params.groupId, id);
-          });
-          updateMany(studentIds);
+          for (const id of studentIds) {
+            updateStudent.run(req.params.groupId, id);
+          }
         }
       }
       
