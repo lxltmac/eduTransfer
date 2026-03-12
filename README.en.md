@@ -8,7 +8,7 @@ Campus management system
 ## Development Environment (Hot Reload)
 
 ```bash
-cd /Users/lxltmac/Downloads/educontrol---智慧校园管理系统
+cd /Users/xxxx/educontrol---智慧校园管理系统
 npm run dev
 ```
 
@@ -22,13 +22,13 @@ Visit http://localhost:3000
 
 1. **Build frontend + bundle backend**
    ```bash
-   cd /Users/lxltmac/Downloads/educontrol---智慧校园管理系统
+   cd /Users/xxxx/educontrol---智慧校园管理系统
    ./build-deploy.sh
    ```
 
 2. **Deploy using the app**
-   - Open the deployer: `/Users/lxltmac/edu-deploy/src-tauri/target/release/bundle/macos/智慧校园发布器.app`
-   - Select project folder: `/Users/lxltmac/Downloads/educontrol---智慧校园管理系统`
+   - Open the deployer: `/Users/xxxx/edu-deploy/src-tauri/target/release/bundle/macos/智慧校园发布器.app`
+   - Select project folder: `/Users/xxxx/Downloads/educontrol---智慧校园管理系统`
    - Click "Deploy"
 
 ### Option 2: Manual Deployment
