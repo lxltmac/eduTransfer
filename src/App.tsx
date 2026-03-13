@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
+import FolderCard from './components/ui/FolderCard';
 import { 
   LayoutDashboard, 
   Users, 
@@ -64,6 +65,11 @@ export interface StudentFile {
   file_url: string;
   file_size: number;
   uploaded_at: string;
+  folder_id?: number | null;
+  uploader_name?: string | null;
+  uploader_username?: string | null;
+  role_ids?: string | null;
+  group_ids?: string | null;
 }
 
 export interface Group {
@@ -105,7 +111,7 @@ export interface Role {
   permissions: string[];
 }
 
-type Tab = 'dashboard' | 'classes' | 'files' | 'groups' | 'accounts' | 'roles' | 'menu';
+type Tab = 'dashboard' | 'classes' | 'files' | 'groups' | 'accounts' | 'roles' | 'menu' | 'settings';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(() => {
@@ -1662,48 +1668,22 @@ function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFi
               {currentFolders.length > 0 && (
                 <div className="mb-6">
                   <h4 className="text-sm font-bold text-slate-400 mb-3">文件夹</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                     {currentFolders.map(folder => (
-                      <div 
-                        key={folder.id} 
-                        onClick={() => { setParentId(folder.id); setCurrentPage(1); }}
-                        className="bg-white rounded-xl border border-slate-200 p-3 hover:shadow-md hover:border-blue-300 cursor-pointer transition-all group relative"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <Folder size={20} className="text-blue-500" />
-                          <div className="flex items-center gap-1">
-                            {(user?.role === 'admin' || user?.role === 'teacher') && (
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingFolder(folder);
-                                  setEditName(folder.name);
-                                  const parseJson = (str: string | null | undefined) => {
-                                    if (!str) return [];
-                                    try { return JSON.parse(str); } catch { return []; }
-                                  };
-                                  setEditFolderRoles(parseJson(folder.role_ids));
-                                  setEditFolderGroups(parseJson(folder.group_ids));
-                                }}
-                                className="p-1 text-slate-400 hover:text-blue-600"
-                                title="编辑权限"
-                              >
-                                <Settings size={14} />
-                              </button>
-                            )}
-                            <input 
-                              type="checkbox" 
-                              checked={selectedFolders.includes(folder.id)}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                setSelectedFolders(prev => prev.includes(folder.id) ? prev.filter(id => id !== folder.id) : [...prev, folder.id]);
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-                        </div>
-                        <p className="font-medium text-sm truncate">{folder.name}</p>
-                      </div>
+                      <FolderCard 
+                        key={folder.id}
+                        title={folder.name} 
+                        onClick={() => setParentId(folder.id)}
+                        onSettings={() => setEditingFolder(folder)}
+                        isSelected={selectedFolders.includes(folder.id)}
+                        onSelect={() => {
+                          if (selectedFolders.includes(folder.id)) {
+                            setSelectedFolders(selectedFolders.filter(id => id !== folder.id));
+                          } else {
+                            setSelectedFolders([...selectedFolders, folder.id]);
+                          }
+                        }}
+                      />
                     ))}
                   </div>
                 </div>
