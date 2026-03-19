@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import FolderCard from './components/ui/FolderCard';
+import Modal from './components/ui/Modal';
+import Alert from './components/ui/Alert';
+import { FileTypeSelect } from './components/ui/FileTypeSelect';
+import { SearchTypeSelect } from './components/ui/SearchTypeSelect';
 import { 
+  AlertTriangle,
   LayoutDashboard, 
   Users, 
   FileCheck, 
@@ -123,6 +128,46 @@ export default function App() {
   const [files, setFiles] = useState<StudentFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [siteSettings, setSiteSettings] = useState<{ site_name: string; theme_color: string; site_subtitle: string }>({ site_name: 'EduControl', theme_color: '#3B82F6', site_subtitle: 'Teacher Portal' });
+  
+  const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'warning' | 'info'; message: string } | null>(null);
+
+  const showNotification = (type: 'success' | 'error' | 'warning' | 'info', message: string) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'danger' | 'warning' | 'info';
+  } | null>(null);
+  
+  const confirmCallbackRef = useRef<(() => void) | null>(null);
+
+  const showConfirm = (options: {
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type?: 'danger' | 'warning' | 'info';
+  }) => {
+    confirmCallbackRef.current = options.onConfirm;
+    setConfirmDialog({
+      isOpen: true,
+      title: options.title,
+      message: options.message,
+      type: options.type,
+    });
+  };
+  
+  const handleConfirm = () => {
+    if (confirmCallbackRef.current) {
+      confirmCallbackRef.current();
+    }
+    setConfirmDialog(null);
+    confirmCallbackRef.current = null;
+  };
 
   useEffect(() => {
     fetchSettings();
@@ -182,8 +227,15 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    setUser(null);
-    setActiveTab('dashboard');
+    showConfirm({
+      title: '退出登录',
+      message: '确定要退出登录吗？',
+      type: 'warning',
+      onConfirm: () => {
+        setUser(null);
+        setActiveTab('dashboard');
+      }
+    });
   };
 
   if (!user) {
@@ -195,14 +247,20 @@ export default function App() {
   };
 
   const handleDeleteFile = async (id: number) => {
-    if (confirm('确定要删除该文件吗？')) {
-      try {
-        await fetch(`/api/files/${id}`, { method: 'DELETE' });
-        fetchData();
-      } catch (error) {
-        console.error('Delete failed');
+    showConfirm({
+      title: '删除文件',
+      message: '确定要删除该文件吗？',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await fetch(`/api/files/${id}`, { method: 'DELETE' });
+          showNotification('success', '删除成功');
+          fetchData();
+        } catch (error) {
+          showNotification('error', '删除失败');
+        }
       }
-    }
+    });
   };
 
   const SidebarItem = ({ id, icon: Icon, label }: { id: Tab, icon: any, label: string }) => (
@@ -221,6 +279,41 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-900">
+      {notification && (
+        <div className="fixed top-4 right-4 z-[100]">
+          <Alert type={notification.type} message={notification.message} />
+        </div>
+      )}
+      {confirmDialog && confirmDialog.isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setConfirmDialog(null)} />
+          <div className="relative bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl border border-red-200">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 mt-1 text-red-500">
+                <AlertTriangle size={24} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-red-800 mb-2">{confirmDialog.title}</h3>
+                <p className="text-sm text-red-800 opacity-80">{confirmDialog.message}</p>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setConfirmDialog(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 font-medium hover:bg-slate-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirm}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-medium"
+              >
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-slate-200 flex flex-col p-4">
         <div className="flex items-center gap-3 px-2 mb-8">
@@ -306,12 +399,12 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               {activeTab === 'dashboard' && <DashboardView classes={classes} files={files} setActiveTab={setActiveTab} />}
-              {activeTab === 'classes' && <ClassesView classes={classes} onRefresh={fetchData} />}
-              {activeTab === 'files' && <FilesView files={files} onDelete={handleDeleteFile} onRefresh={fetchData} user={user} />}
-              {activeTab === 'groups' && <GroupsView classes={classes} />}
-              {activeTab === 'accounts' && <AccountsView />}
-              {activeTab === 'roles' && <RolesView />}
-              {activeTab === 'menu' && <MenuView />}
+              {activeTab === 'classes' && <ClassesView classes={classes} onRefresh={fetchData} showNotification={showNotification} showConfirm={showConfirm} />}
+              {activeTab === 'files' && <FilesView files={files} onDelete={handleDeleteFile} onRefresh={fetchData} user={user} showConfirm={showConfirm} showNotification={showNotification} />}
+              {activeTab === 'groups' && <GroupsView classes={classes} showNotification={showNotification} showConfirm={showConfirm} />}
+              {activeTab === 'accounts' && <AccountsView showConfirm={showConfirm} showNotification={showNotification} />}
+              {activeTab === 'roles' && <RolesView showNotification={showNotification} showConfirm={showConfirm} />}
+              {activeTab === 'menu' && <MenuView showConfirm={showConfirm} />}
               {activeTab === 'settings' && <SettingsView onSettingsChange={fetchSettings} />}
             </motion.div>
           </AnimatePresence>
@@ -321,7 +414,7 @@ export default function App() {
   );
 }
 
-function MenuView() {
+function MenuView({ showConfirm }: { showConfirm: (options: { title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' }) => void }) {
   const [menus, setMenus] = useState<{id: number; name: string; route: string; icon: string; enabled: boolean; parent_id: number | null; order_index: number}[]>([]);
   const [editingMenu, setEditingMenu] = useState<{id: number; name: string; route: string; icon: string; enabled: boolean; parent_id: number | null; order_index: number} | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -362,14 +455,19 @@ function MenuView() {
   };
 
   const handleDeleteMenu = async (id: number) => {
-    if (confirm('确定要删除该菜单吗？')) {
-      await fetch('/api/menu', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id })
-      });
-      fetchMenus();
-    }
+    showConfirm({
+      title: '删除菜单',
+      message: '确定要删除该菜单吗？',
+      type: 'danger',
+      onConfirm: async () => {
+        await fetch('/api/menu', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+        fetchMenus();
+      }
+    });
   };
 
   const handleToggleEnabled = async (menu: {id: number; name: string; route: string; icon: string; enabled: boolean; parent_id: number | null; order_index: number}) => {
@@ -445,159 +543,157 @@ function MenuView() {
         )}
       </div>
 
-      {showAdd && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
-            <h3 className="text-xl font-bold mb-6">新增菜单</h3>
-            <form onSubmit={handleAddMenu} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">菜单名称</label>
-                <input 
-                  type="text" 
-                  value={newMenu.name}
-                  onChange={(e) => setNewMenu({...newMenu, name: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">路径</label>
-                <input 
-                  type="text" 
-                  value={newMenu.route}
-                  onChange={(e) => setNewMenu({...newMenu, route: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">图标</label>
-                <input 
-                  type="text" 
-                  value={newMenu.icon}
-                  onChange={(e) => setNewMenu({...newMenu, icon: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
-                  placeholder="图标名称"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">父级菜单</label>
-                <select 
-                  value={newMenu.parent_id || ''}
-                  onChange={(e) => setNewMenu({...newMenu, parent_id: e.target.value ? Number(e.target.value) : null})}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
-                >
-                  <option value="">无（顶级菜单）</option>
-                  {menus.filter(m => m.parent_id === null).map(m => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">排序</label>
-                <input 
-                  type="number" 
-                  value={newMenu.order_index}
-                  onChange={(e) => setNewMenu({...newMenu, order_index: parseInt(e.target.value) || 0})}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
-                  placeholder="0"
-                />
-              </div>
-              <div className="flex gap-3 mt-8">
-                <button 
-                  type="button"
-                  onClick={() => setShowAdd(false)}
-                  className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium"
-                >
-                  取消
-                </button>
-                <button 
-                  type="submit"
-                  className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium"
-                >
-                  保存
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={showAdd}
+        onClose={() => setShowAdd(false)}
+        title="新增菜单"
+      >
+        <form onSubmit={handleAddMenu} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">菜单名称</label>
+            <input 
+              type="text" 
+              value={newMenu.name}
+              onChange={(e) => setNewMenu({...newMenu, name: e.target.value})}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
+              required
+            />
           </div>
-        </div>
-      )}
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">路径</label>
+            <input 
+              type="text" 
+              value={newMenu.route}
+              onChange={(e) => setNewMenu({...newMenu, route: e.target.value})}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">图标</label>
+            <input 
+              type="text" 
+              value={newMenu.icon}
+              onChange={(e) => setNewMenu({...newMenu, icon: e.target.value})}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
+              placeholder="图标名称"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">父级菜单</label>
+            <select 
+              value={newMenu.parent_id || ''}
+              onChange={(e) => setNewMenu({...newMenu, parent_id: e.target.value ? Number(e.target.value) : null})}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
+            >
+              <option value="">无（顶级菜单）</option>
+              {menus.filter(m => m.parent_id === null).map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">排序</label>
+            <input 
+              type="number" 
+              value={newMenu.order_index}
+              onChange={(e) => setNewMenu({...newMenu, order_index: parseInt(e.target.value) || 0})}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
+              placeholder="0"
+            />
+          </div>
+          <div className="flex gap-3 mt-8">
+            <button 
+              type="button"
+              onClick={() => setShowAdd(false)}
+              className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium"
+            >
+              取消
+            </button>
+            <button 
+              type="submit"
+              className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium"
+            >
+              保存
+            </button>
+          </div>
+        </form>
+      </Modal>
 
-      {editingMenu && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
-            <h3 className="text-xl font-bold mb-6">编辑菜单</h3>
-            <form onSubmit={handleUpdateMenu} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">菜单名称</label>
-                <input 
-                  type="text" 
-                  value={editingMenu.name}
-                  onChange={(e) => setEditingMenu({...editingMenu, name: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">路径</label>
-                <input 
-                  type="text" 
-                  value={editingMenu.route}
-                  onChange={(e) => setEditingMenu({...editingMenu, route: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">图标</label>
-                <input 
-                  type="text" 
-                  value={editingMenu.icon}
-                  onChange={(e) => setEditingMenu({...editingMenu, icon: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">父级菜单</label>
-                <select 
-                  value={editingMenu.parent_id || ''}
-                  onChange={(e) => setEditingMenu({...editingMenu, parent_id: e.target.value ? Number(e.target.value) : null})}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
-                >
-                  <option value="">无（顶级菜单）</option>
-                  {menus.filter(m => m.parent_id === null && m.id !== editingMenu.id).map(m => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">排序</label>
-                <input 
-                  type="number" 
-                  value={editingMenu.order_index}
-                  onChange={(e) => setEditingMenu({...editingMenu, order_index: parseInt(e.target.value) || 0})}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
-                />
-              </div>
-              <div className="flex gap-3 mt-8">
-                <button 
-                  type="button"
-                  onClick={() => setEditingMenu(null)}
-                  className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium"
-                >
-                  取消
-                </button>
-                <button 
-                  type="submit"
-                  className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium"
-                >
-                  保存
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={!!editingMenu}
+        onClose={() => setEditingMenu(null)}
+        title="编辑菜单"
+      >
+        <form onSubmit={handleUpdateMenu} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">菜单名称</label>
+            <input 
+              type="text" 
+              value={editingMenu?.name || ''}
+              onChange={(e) => editingMenu && setEditingMenu({...editingMenu, name: e.target.value})}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
+              required
+            />
           </div>
-        </div>
-      )}
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">路径</label>
+            <input 
+              type="text" 
+              value={editingMenu?.route || ''}
+              onChange={(e) => editingMenu && setEditingMenu({...editingMenu, route: e.target.value})}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">图标</label>
+            <input 
+              type="text" 
+              value={editingMenu?.icon || ''}
+              onChange={(e) => editingMenu && setEditingMenu({...editingMenu, icon: e.target.value})}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">父级菜单</label>
+            <select 
+              value={editingMenu?.parent_id || ''}
+              onChange={(e) => editingMenu && setEditingMenu({...editingMenu, parent_id: e.target.value ? Number(e.target.value) : null})}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
+            >
+              <option value="">无（顶级菜单）</option>
+              {menus.filter(m => m.parent_id === null && m.id !== editingMenu?.id).map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">排序</label>
+            <input 
+              type="number" 
+              value={editingMenu?.order_index || 0}
+              onChange={(e) => editingMenu && setEditingMenu({...editingMenu, order_index: parseInt(e.target.value) || 0})}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
+            />
+          </div>
+          <div className="flex gap-3 mt-8">
+            <button 
+              type="button"
+              onClick={() => setEditingMenu(null)}
+              className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium"
+            >
+              取消
+            </button>
+            <button 
+              type="submit"
+              className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium"
+            >
+              保存
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -689,7 +785,7 @@ function LoginView({ onLogin, siteSettings }: { onLogin: (user: User) => void; s
   );
 }
 
-function AccountsView() {
+function AccountsView({ showConfirm, showNotification }: { showConfirm: (options: { title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' }) => void; showNotification: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void }) {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -733,24 +829,37 @@ function AccountsView() {
   };
 
   const handleDeleteUser = async (id: number) => {
-    if (confirm('确定要删除该账号吗？')) {
-      await fetch(`/api/users/${id}`, { method: 'DELETE' });
-      fetchUsers();
-    }
+    showConfirm({
+      title: '删除账号',
+      message: '确定要删除该账号吗？',
+      type: 'danger',
+      onConfirm: async () => {
+        await fetch(`/api/users/${id}`, { method: 'DELETE' });
+        showNotification('success', '删除成功');
+        fetchUsers();
+      }
+    });
   };
 
   const handleBatchDelete = async () => {
-    if (!confirm(`确定要删除选中的 ${selectedUsers.length} 个账号吗？`)) return;
-    setDeleting(true);
-    try {
-      for (const id of selectedUsers) {
-        await fetch(`/api/users/${id}`, { method: 'DELETE' });
+    showConfirm({
+      title: '批量删除',
+      message: `确定要删除选中的 ${selectedUsers.length} 个账号吗？`,
+      type: 'danger',
+      onConfirm: async () => {
+        setDeleting(true);
+        try {
+          for (const id of selectedUsers) {
+            await fetch(`/api/users/${id}`, { method: 'DELETE' });
+          }
+          showNotification('success', '删除成功');
+          setSelectedUsers([]);
+          fetchUsers();
+        } finally {
+          setDeleting(false);
+        }
       }
-      setSelectedUsers([]);
-      fetchUsers();
-    } finally {
-      setDeleting(false);
-    }
+    });
   };
 
   const handleImportUsers = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -770,14 +879,14 @@ function AccountsView() {
       });
       const result = await res.json();
       if (result.success) {
-        alert(`成功导入 ${result.count} 个账号`);
+        showNotification('success', `成功导入 ${result.count} 个账号`);
         setShowImport(false);
         fetchUsers();
       } else {
-        alert(result.message || '导入失败');
+        showNotification('error', result.message || '导入失败');
       }
     } catch (err) {
-      alert('导入失败');
+      showNotification('error', '导入失败');
     } finally {
       setImporting(false);
     }
@@ -811,6 +920,7 @@ function AccountsView() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updateData)
     });
+    showNotification('success', '修改成功');
     fetchUsers();
     setEditingUser(null);
   };
@@ -888,151 +998,148 @@ function AccountsView() {
         );
       })}
 
-      {showAdd && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
-            <h3 className="text-xl font-bold mb-6">新增系统账号</h3>
-            <form onSubmit={handleAddUser} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">姓名</label>
-                <input type="text" value={newUser.name} onChange={(e) => setNewUser({...newUser, name: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" required />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">用户名</label>
-                <input type="text" value={newUser.username} onChange={(e) => setNewUser({...newUser, username: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" required />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">密码</label>
-                <input type="password" value={newUser.password} onChange={(e) => setNewUser({...newUser, password: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" required />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">角色</label>
-                <select value={newUser.role} onChange={(e) => setNewUser({...newUser, role: e.target.value as any})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none">
-                  {roles.map(r => <option key={r.id} value={r.name}>{r.name === 'admin' ? '管理员' : r.name === 'teacher' ? '教师' : r.name === 'student' ? '学生' : r.name}</option>)}
-                </select>
-              </div>
-              <div className="flex gap-3 mt-8">
-                <button type="button" onClick={() => setShowAdd(false)} className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium">取消</button>
-                <button type="submit" className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium">创建账号</button>
-              </div>
-            </form>
+      <Modal
+        isOpen={showAdd}
+        onClose={() => setShowAdd(false)}
+        title="新增系统账号"
+        disableAnimation
+      >
+        <form onSubmit={handleAddUser} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">姓名</label>
+            <input type="text" value={newUser.name} onChange={(e) => setNewUser({...newUser, name: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" required />
           </div>
-        </div>
-      )}
-
-      {editingUser && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
-            <h3 className="text-xl font-bold mb-6">编辑账号</h3>
-            <form onSubmit={handleUpdateUser} className="space-y-4">
-              <div className="flex justify-center">
-                <div className="relative">
-                  <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-100">
-                    <img src={editingUser.avatar} alt="Avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                  </div>
-                  <label className="absolute bottom-0 right-0 w-8 h-8 bg-[var(--color-primary)] rounded-full flex items-center justify-center text-white cursor-pointer hover:bg-blue-700">
-                    <Edit size={14} />
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                          setEditingUser({ ...editingUser, avatar: reader.result as string });
-                        };
-                        reader.readAsDataURL(file);
-                      }
-                    }} />
-                  </label>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">姓名</label>
-                <input type="text" value={editingUser.name} onChange={(e) => setEditingUser({...editingUser, name: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" required />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">用户名</label>
-                <input type="text" value={editingUser.username} onChange={(e) => setEditingUser({...editingUser, username: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" required />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">新密码 <span className="text-slate-300 font-normal">(留空则不修改)</span></label>
-                <input type="password" value={editingUser.password || ''} onChange={(e) => setEditingUser({...editingUser, password: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" placeholder="输入新密码" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">角色</label>
-                <select value={editingUser.role} onChange={(e) => setEditingUser({...editingUser, role: e.target.value as any})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none">
-                  {roles.map(r => <option key={r.id} value={r.name}>{r.name === 'admin' ? '管理员' : r.name === 'teacher' ? '教师' : r.name === 'student' ? '学生' : r.name}</option>)}
-                </select>
-              </div>
-              <div className="flex gap-3 mt-8">
-                <button type="button" onClick={() => setEditingUser(null)} className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium">取消</button>
-                <button type="submit" className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium">保存修改</button>
-              </div>
-            </form>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">用户名</label>
+            <input type="text" value={newUser.username} onChange={(e) => setNewUser({...newUser, username: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" required />
           </div>
-        </div>
-      )}
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">密码</label>
+            <input type="password" value={newUser.password} onChange={(e) => setNewUser({...newUser, password: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" required />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">角色</label>
+            <select value={newUser.role} onChange={(e) => setNewUser({...newUser, role: e.target.value as any})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none">
+              {roles.map(r => <option key={r.id} value={r.name}>{r.name === 'admin' ? '管理员' : r.name === 'teacher' ? '教师' : r.name === 'student' ? '学生' : r.name}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-3 mt-8">
+            <button type="button" onClick={() => setShowAdd(false)} className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium">取消</button>
+            <button type="submit" className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium">创建账号</button>
+          </div>
+        </form>
+      </Modal>
 
-      {showImport && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl"
-          >
-            <h3 className="text-xl font-bold mb-2">导入账号</h3>
-            <p className="text-slate-500 text-sm mb-4">请上传包含账号信息的 Excel 或 CSV 文件</p>
-            
-            <div className="bg-blue-50 rounded-xl p-4 mb-6">
-              <p className="text-sm font-medium text-blue-700 mb-2">模板格式说明：</p>
-              <div className="text-xs text-blue-600 space-y-1">
-                <p>• 用户名 - 登录账号</p>
-                <p>• 密码 - 登录密码</p>
-                <p>• 姓名 - 用户真实姓名</p>
-                <p>• 角色 - admin/teacher/student</p>
+      <Modal
+        isOpen={!!editingUser}
+        onClose={() => setEditingUser(null)}
+        title="编辑账号"
+        showCloseButton={false}
+      >
+        <form onSubmit={handleUpdateUser} className="space-y-4">
+          <div className="flex justify-center">
+            <div className="relative">
+              <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-100">
+                <img src={editingUser?.avatar || ''} alt="Avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
               </div>
-              <button onClick={downloadAccountTemplate} className="mt-3 text-sm text-blue-600 hover:text-blue-700 underline">
-                下载模板文件
-              </button>
+              <label className="absolute bottom-0 right-0 w-8 h-8 bg-[var(--color-primary)] rounded-full flex items-center justify-center text-white cursor-pointer hover:bg-blue-700">
+                <Edit size={14} />
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      editingUser && setEditingUser({ ...editingUser, avatar: reader.result as string });
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }} />
+              </label>
             </div>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">姓名</label>
+            <input type="text" value={editingUser?.name || ''} onChange={(e) => editingUser && setEditingUser({...editingUser, name: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" required />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">用户名</label>
+            <input type="text" value={editingUser?.username || ''} onChange={(e) => editingUser && setEditingUser({...editingUser, username: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" required />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">新密码 <span className="text-slate-300 font-normal">(留空则不修改)</span></label>
+            <input type="password" value={editingUser?.password || ''} onChange={(e) => editingUser && setEditingUser({...editingUser, password: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" placeholder="输入新密码" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">角色</label>
+            <select value={editingUser?.role || ''} onChange={(e) => editingUser && setEditingUser({...editingUser, role: e.target.value as any})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none">
+              {roles.map(r => <option key={r.id} value={r.name}>{r.name === 'admin' ? '管理员' : r.name === 'teacher' ? '教师' : r.name === 'student' ? '学生' : r.name}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-3 mt-8">
+            <button type="button" onClick={() => setEditingUser(null)} className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium">取消</button>
+            <button type="submit" className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium">保存修改</button>
+          </div>
+        </form>
+      </Modal>
 
-            <form onSubmit={handleImportUsers} className="space-y-4">
-              <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer group">
-                <input 
-                  type="file" 
-                  name="file"
-                  accept=".xlsx,.xls,.csv,.txt"
-                  className="hidden"
-                  id="accountImportFile"
-                />
-                <label htmlFor="accountImportFile" className="cursor-pointer">
-                  <div className="w-14 h-14 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-blue-50 transition-colors">
-                    <Upload className="text-slate-400 group-hover:text-blue-500" size={28} />
-                  </div>
-                  <p className="text-sm font-medium text-slate-600">点击或拖拽文件至此处</p>
-                  <p className="text-xs text-slate-400 mt-1">支持 .xlsx, .csv, .txt (最大 10MB)</p>
-                </label>
-              </div>
-
-              <div className="flex gap-3">
-                <button 
-                  type="button" 
-                  onClick={() => { setShowImport(false); }}
-                  className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors"
-                >
-                  取消
-                </button>
-                <button 
-                  type="submit"
-                  disabled={importing}
-                  className="flex-1 px-4 py-2 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700 disabled:opacity-50"
-                >
-                  {importing ? '导入中...' : '开始导入'}
-                </button>
-              </div>
-            </form>
-          </motion.div>
+      <Modal
+        isOpen={showImport}
+        onClose={() => setShowImport(false)}
+        title="导入账号"
+        size="lg"
+        disableAnimation
+      >
+        <p className="text-slate-500 text-sm mb-4">请上传包含账号信息的 Excel 或 CSV 文件</p>
+        
+        <div className="bg-blue-50 rounded-xl p-4 mb-6">
+          <p className="text-sm font-medium text-blue-700 mb-2">模板格式说明：</p>
+          <div className="text-xs text-blue-600 space-y-1">
+            <p>• 用户名 - 登录账号</p>
+            <p>• 密码 - 登录密码</p>
+            <p>• 姓名 - 用户真实姓名</p>
+            <p>• 角色 - admin/teacher/student</p>
+          </div>
+          <button onClick={downloadAccountTemplate} className="mt-3 text-sm text-blue-600 hover:text-blue-700 underline">
+            下载模板文件
+          </button>
         </div>
-      )}
+
+        <form onSubmit={handleImportUsers} className="space-y-4">
+          <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer group">
+            <input 
+              type="file" 
+              name="file"
+              accept=".xlsx,.xls,.csv,.txt"
+              className="hidden"
+              id="accountImportFile"
+            />
+            <label htmlFor="accountImportFile" className="cursor-pointer">
+              <div className="w-14 h-14 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-blue-50 transition-colors">
+                <Upload className="text-slate-400 group-hover:text-blue-500" size={28} />
+              </div>
+              <p className="text-sm font-medium text-slate-600">点击或拖拽文件至此处</p>
+              <p className="text-xs text-slate-400 mt-1">支持 .xlsx, .csv, .txt (最大 10MB)</p>
+            </label>
+          </div>
+
+          <div className="flex gap-3">
+            <button 
+              type="button" 
+              onClick={() => { setShowImport(false); }}
+              className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors"
+            >
+              取消
+            </button>
+            <button 
+              type="submit"
+              disabled={importing}
+              className="flex-1 px-4 py-2 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700 disabled:opacity-50"
+            >
+              {importing ? '导入中...' : '开始导入'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -1187,7 +1294,7 @@ function ExcelPreview({ url, name }: { url: string; name: string }) {
   );
 }
 
-function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFile[], onDelete: (id: number) => void, onRefresh: () => void, user: User }) {
+function FilesView({ files = [], onDelete, onRefresh, user, showConfirm, showNotification }: { files: StudentFile[], onDelete: (id: number) => void, onRefresh: () => void, user: User, showConfirm: (options: { title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' }) => void, showNotification: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void }) {
   const [filter, setFilter] = useState<string>('all');
   const [showUpload, setShowUpload] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -1386,37 +1493,58 @@ function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFi
   };
 
   const handleDeleteFolder = async (id: number) => {
-    if (!confirm('确定要删除该文件夹吗？')) return;
-    await fetch(`/api/folders/${id}`, { method: 'DELETE' });
-    fetchFolders();
+    showConfirm({
+      title: '删除文件夹',
+      message: '确定要删除该文件夹吗？',
+      type: 'danger',
+      onConfirm: async () => {
+        await fetch(`/api/folders/${id}`, { method: 'DELETE' });
+        showNotification('success', '删除成功');
+        fetchFolders();
+      }
+    });
   };
 
   const handleBatchDeleteFiles = async () => {
-    if (!confirm(`确定要删除选中的 ${selectedFiles.length} 个文件吗？`)) return;
-    await fetch('/api/files/batch-delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: selectedFiles })
+    showConfirm({
+      title: '批量删除文件',
+      message: `确定要删除选中的 ${selectedFiles.length} 个文件吗？`,
+      type: 'danger',
+      onConfirm: async () => {
+        await fetch('/api/files/batch-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: selectedFiles })
+        });
+        showNotification('success', '删除成功');
+        setSelectedFiles([]);
+        onRefresh();
+        setShowBatchActions(false);
+      }
     });
-    setSelectedFiles([]);
-    onRefresh();
-    setShowBatchActions(false);
   };
 
   const handleBatchDeleteFolders = async () => {
-    if (!confirm(`确定要删除选中的 ${selectedFolders.length} 个文件夹吗？`)) return;
-    await fetch('/api/folders/batch-delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: selectedFolders })
+    showConfirm({
+      title: '批量删除文件夹',
+      message: `确定要删除选中的 ${selectedFolders.length} 个文件夹吗？`,
+      type: 'danger',
+      onConfirm: async () => {
+        await fetch('/api/folders/batch-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: selectedFolders })
+        });
+        showNotification('success', '删除成功');
+        setSelectedFolders([]);
+        fetchFolders();
+      }
     });
-    setSelectedFolders([]);
-    fetchFolders();
   };
 
   const handleMoveFiles = async () => {
     if (selectedFiles.length === 0) {
-      alert('请选择要移动的文件');
+      showNotification('warning', '请选择要移动的文件');
       return;
     }
     const res = await fetch('/api/files/move', {
@@ -1425,17 +1553,20 @@ function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFi
       body: JSON.stringify({ fileIds: selectedFiles, folderId: targetFolderId })
     });
     if (res.ok) {
-      alert('文件移动成功');
+      showNotification('success', '文件移动成功');
       setSelectedFiles([]);
       setShowMoveModal(false);
       setTargetFolderId(null);
       onRefresh();
+    } else {
+      const data = await res.json();
+      showNotification('error', data.message || '移动失败');
     }
   };
 
   const handleMoveFolders = async () => {
     if (selectedFolders.length === 0) {
-      alert('请选择要移动的文件夹');
+      showNotification('warning', '请选择要移动的文件夹');
       return;
     }
     const res = await fetch('/api/folders/move', {
@@ -1444,11 +1575,14 @@ function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFi
       body: JSON.stringify({ folderIds: selectedFolders, targetId: targetFolderId })
     });
     if (res.ok) {
-      alert('文件夹移动成功');
+      showNotification('success', '文件夹移动成功');
       setSelectedFolders([]);
       setShowFolderMoveModal(false);
       setTargetFolderId(null);
       fetchFolders();
+    } else {
+      const data = await res.json();
+      showNotification('error', data.message || '移动失败');
     }
   };
   
@@ -1464,12 +1598,12 @@ function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFi
 
   const handleUpload = async () => {
     if (!selectedFile) {
-      alert('请选择文件');
+      showNotification('warning', '请选择文件');
       return;
     }
 
     if (!user.student_id && user.role === 'student') {
-      alert('您的账号未关联学生信息，无法上传');
+      showNotification('warning', '您的账号未关联学生信息，无法上传');
       return;
     }
 
@@ -1489,16 +1623,17 @@ function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFi
       console.log('Upload response:', res.status, data);
       
       if (res.ok && data.success) {
+        showNotification('success', '上传成功');
         onRefresh();
         setShowUpload(false);
         setSelectedFile(null);
         setFileType('pdf');
       } else {
-        alert(data.message || '上传失败');
+        showNotification('error', data.message || '上传失败');
       }
     } catch (error) {
       console.error('Upload error:', error);
-      alert('上传出错: ' + (error as Error).message);
+      showNotification('error', '上传出错');
     } finally {
       setUploading(false);
     }
@@ -1506,7 +1641,7 @@ function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFi
 
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) {
-      alert('请输入文件夹名称');
+      showNotification('warning', '请输入文件夹名称');
       return;
     }
     try {
@@ -1523,6 +1658,7 @@ function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFi
       const result = await res.json();
       console.log('Create folder result:', result);
       if (result.success) {
+        showNotification('success', '创建文件夹成功');
         setNewFolderName('');
         setFolderRoles(user?.role === 'student' ? ['student'] : ['admin', 'teacher']);
         setFolderGroups([]);
@@ -1530,11 +1666,11 @@ function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFi
         await fetchFolders();
         console.log('Folders after creation:', folders);
       } else {
-        alert(result.message || '创建失败');
+        showNotification('error', result.message || '创建失败');
       }
     } catch (error) {
       console.error('Create folder error:', error);
-      alert('创建文件夹失败: ' + (error as Error).message);
+      showNotification('error', '创建文件夹失败');
     }
   };
 
@@ -1561,24 +1697,21 @@ function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFi
         </div>
         <div className="flex gap-2 items-center">
           <div className="relative flex items-center">
-            <select 
-              value={searchType} 
-              onChange={(e) => setSearchType(e.target.value as 'file' | 'folder' | 'uploader')}
-              className="px-3 py-2 border border-r-0 border-slate-200 rounded-l-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              <option value="file">文件名</option>
-              <option value="folder">文件夹名</option>
-              <option value="uploader">上传者</option>
-            </select>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input 
-                type="text" 
-                placeholder="搜索..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-slate-200 rounded-r-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+            <div className="relative flex items-center">
+              <SearchTypeSelect 
+                value={searchType} 
+                onChange={(value) => setSearchType(value as 'file' | 'folder' | 'uploader')}
               />
+              <div className="relative flex items-center -ml-px">
+                <Search className="absolute left-3 text-slate-400 pointer-events-none" size={16} style={{ top: '50%', transform: 'translateY(-50%)' }} />
+                <input 
+                  type="text" 
+                  placeholder="搜索..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-8 pl-9 pr-4 border border-slate-200 rounded-r-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48 bg-white"
+                />
+              </div>
             </div>
           </div>
           <button 
@@ -1640,19 +1773,10 @@ function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFi
         </div>
 
         <div className="flex gap-2 mb-4">
-          <select 
+          <FileTypeSelect
             value={filter}
-            onChange={(e) => { setFilter(e.target.value); setCurrentPage(1); }}
-            className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm font-medium text-slate-600 outline-none"
-          >
-            <option value="all">所有类型</option>
-            <option value="audio">音频文件</option>
-            <option value="ppt">PPT 演示文稿</option>
-            <option value="pdf">PDF 文档</option>
-            <option value="image">图片资源</option>
-            <option value="video">视频文件</option>
-            <option value="other">其他</option>
-          </select>
+            onChange={(value) => { setFilter(value); setCurrentPage(1); }}
+          />
         </div>
 
         {currentFolders.length === 0 && displayFiles.length === 0 ? (
@@ -1782,402 +1906,399 @@ function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFi
           )}
       </div>
 
-      {showUpload && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
+      <Modal
+        isOpen={showUpload}
+        onClose={() => { setShowUpload(false); setSelectedFile(null); }}
+        title="上传学习文件"
+        disableAnimation
+      >
+        <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:border-blue-300 transition-colors relative">
+          <Upload size={40} className="mx-auto text-slate-300 mb-3" />
+          {selectedFile ? (
+            <div className="text-sm">
+              <p className="font-medium text-slate-700">{selectedFile.name}</p>
+              <p className="text-xs text-slate-400 mt-1">点击更换文件</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-slate-500">点击或拖拽文件到此处上传</p>
+              <p className="text-xs text-slate-400 mt-1">支持所有文件类型</p>
+            </>
+          )}
+          <input 
+            type="file" 
+            onChange={(e) => {
+              const file = e.target.files?.[0] || null;
+              setSelectedFile(file);
+              if (file) {
+                setFileType(detectFileType(file));
+              }
+            }}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          />
+        </div>
+        
+        {selectedFile && (
+          <div className="bg-blue-50 rounded-xl p-3 flex items-center gap-3 mt-4">
+            <FileCheck size={20} className="text-blue-500" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-blue-700">{selectedFile.name}</p>
+              <p className="text-xs text-blue-400">{(selectedFile.size / 1024).toFixed(1)} KB</p>
+            </div>
+          </div>
+        )}
+        
+        <div className="flex gap-3 mt-6">
+          <button 
+            type="button"
+            onClick={() => { setShowUpload(false); setSelectedFile(null); }}
+            className="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50"
+            disabled={uploading}
           >
-            <h3 className="text-xl font-bold mb-6">上传学习文件</h3>
-              <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:border-blue-300 transition-colors relative">
-                <Upload size={40} className="mx-auto text-slate-300 mb-3" />
-                {selectedFile ? (
-                  <div className="text-sm">
-                    <p className="font-medium text-slate-700">{selectedFile.name}</p>
-                    <p className="text-xs text-slate-400 mt-1">点击更换文件</p>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-sm text-slate-500">点击或拖拽文件到此处上传</p>
-                    <p className="text-xs text-slate-400 mt-1">支持所有文件类型</p>
-                  </>
-                )}
-                <input 
-                  type="file" 
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    setSelectedFile(file);
-                    if (file) {
-                      setFileType(detectFileType(file));
-                    }
-                  }}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                />
-              </div>
-              
-              {selectedFile && (
-                <div className="bg-blue-50 rounded-xl p-3 flex items-center gap-3">
-                  <FileCheck size={20} className="text-blue-500" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-blue-700">{selectedFile.name}</p>
-                    <p className="text-xs text-blue-400">{(selectedFile.size / 1024).toFixed(1)} KB</p>
-                  </div>
+            取消
+          </button>
+          <button 
+            type="button"
+            onClick={handleUpload}
+            className="flex-1 px-4 py-3 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+            disabled={uploading || !selectedFile}
+          >
+            {uploading ? (
+              <>上传中...</>
+            ) : (
+              <>
+                <Upload size={18} />
+                上传文件
+              </>
+            )}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showMoveModal && selectedFiles.length > 0}
+        onClose={() => setShowMoveModal(false)}
+        title="移动文件"
+      >
+        <p className="text-sm text-slate-500 mb-4">选择目标文件夹（只能移动到当前目录的子文件夹）</p>
+        <div className="space-y-2 max-h-60 overflow-y-auto">
+          <button
+            onClick={async () => {
+              for (const fileId of selectedFiles) {
+                await fetch('/api/files/move', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ fileId, folderId: null })
+                });
+              }
+              showNotification('success', '文件移动成功');
+              setShowMoveModal(false);
+              setSelectedFiles([]);
+              setParentId(null);
+              onRefresh();
+            }}
+            className="w-full px-4 py-3 text-left rounded-xl hover:bg-blue-50 flex items-center gap-3"
+          >
+            <Home size={18} className="text-slate-500" />
+            <span>根目录</span>
+          </button>
+          {folders.filter(f => f.parent_id === parentId).map(folder => (
+            <button
+              key={folder.id}
+              onClick={async () => {
+                for (const fileId of selectedFiles) {
+                  await fetch('/api/files/move', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fileId, folderId: folder.id })
+                  });
+                }
+                showNotification('success', '文件移动成功');
+                setShowMoveModal(false);
+                setSelectedFiles([]);
+                setParentId(null);
+                onRefresh();
+              }}
+              className="w-full px-4 py-3 text-left rounded-xl hover:bg-blue-50 flex items-center gap-3"
+            >
+              <Folder size={18} className="text-blue-500" />
+              <span>{folder.name}</span>
+            </button>
+          ))}
+          {folders.filter(f => f.parent_id === parentId).length === 0 && (
+            <p className="text-sm text-slate-400 text-center py-4">当前目录下没有子文件夹</p>
+          )}
+        </div>
+        <button onClick={() => setShowMoveModal(false)} className="w-full mt-4 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50">取消</button>
+      </Modal>
+
+      <Modal
+        isOpen={showFolderMoveModal && selectedFolders.length > 0}
+        onClose={() => setShowFolderMoveModal(false)}
+        title="移动文件夹"
+      >
+        <p className="text-sm text-slate-500 mb-4">选择目标位置（只能移动到当前目录的子文件夹）</p>
+        <div className="space-y-2 max-h-60 overflow-y-auto">
+          <button
+            onClick={async () => {
+              for (const folderId of selectedFolders) {
+                await fetch(`/api/folders/${folderId}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ parentId: null })
+                });
+              }
+              showNotification('success', '文件夹移动成功');
+              setShowFolderMoveModal(false);
+              setSelectedFolders([]);
+              setParentId(null);
+              onRefresh();
+            }}
+            className="w-full px-4 py-3 text-left rounded-xl hover:bg-blue-50 flex items-center gap-3"
+          >
+            <Home size={18} className="text-slate-500" />
+            <span>根目录</span>
+          </button>
+          {folders.filter(f => f.parent_id === parentId && !selectedFolders.includes(f.id)).map(folder => (
+            <button
+              key={folder.id}
+              onClick={async () => {
+                for (const folderId of selectedFolders) {
+                  await fetch(`/api/folders/${folderId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ parentId: folder.id })
+                  });
+                }
+                showNotification('success', '文件夹移动成功');
+                setShowFolderMoveModal(false);
+                setSelectedFolders([]);
+                setParentId(null);
+                onRefresh();
+              }}
+              className="w-full px-4 py-3 text-left rounded-xl hover:bg-blue-50 flex items-center gap-3"
+            >
+              <Folder size={18} className="text-blue-500" />
+              <span>{folder.name}</span>
+            </button>
+          ))}
+          {folders.filter(f => f.parent_id === parentId && !selectedFolders.includes(f.id)).length === 0 && (
+            <p className="text-sm text-slate-400 text-center py-4">当前目录下没有子文件夹</p>
+          )}
+        </div>
+        <button onClick={() => setShowFolderMoveModal(false)} className="w-full mt-4 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50">取消</button>
+      </Modal>
+
+      <Modal
+        isOpen={showAddFolder}
+        onClose={() => { setShowAddFolder(false); setFolderRoles(user?.role === 'student' ? ['student'] : ['admin', 'teacher']); setFolderGroups([]); }}
+        title="新建文件夹"
+        disableAnimation
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">文件夹名称</label>
+            <input 
+              type="text" 
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
+              placeholder="请输入文件夹名称"
+            />
+          </div>
+          
+          {(user?.role === 'admin' || user?.role === 'teacher') && (
+            <>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">可见角色（不选则所有人可见）</label>
+                <div className="flex flex-wrap gap-2">
+                  {roles.map(role => (
+                    <label key={role.id} className="flex items-center gap-1 text-sm">
+                      <input 
+                        type="checkbox"
+                        checked={folderRoles.includes(role.name)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFolderRoles([...folderRoles, role.name]);
+                          } else {
+                            setFolderRoles(folderRoles.filter(r => r !== role.name));
+                          }
+                        }}
+                        className="rounded"
+                      />
+                      {role.name === 'admin' ? '管理员' : role.name === 'teacher' ? '教师' : role.name === 'student' ? '学生' : role.name}
+                    </label>
+                  ))}
                 </div>
-              )}
+              </div>
               
-              <div className="flex gap-3">
-                <button 
-                  type="button"
-                  onClick={() => { setShowUpload(false); setSelectedFile(null); }}
-                  className="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50"
-                  disabled={uploading}
-                >
-                  取消
-                </button>
-                <button 
-                  type="button"
-                  onClick={handleUpload}
-                  className="flex-1 px-4 py-3 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                  disabled={uploading || !selectedFile}
-                >
-                  {uploading ? (
-                    <>上传中...</>
-                  ) : (
-                    <>
-                      <Upload size={18} />
-                      上传文件
-                    </>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">可见小组（不选则所有小组可见）</label>
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="p-2 border-b border-slate-100 bg-slate-50">
+                    <input 
+                      type="text" 
+                      placeholder="搜索小组..." 
+                      className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-blue-400"
+                      onChange={(e) => {
+                        const searchInput = e.target as HTMLInputElement;
+                        (window as any).__newGroupSearchTemp = searchInput.value;
+                      }}
+                    />
+                  </div>
+                  <div className="max-h-32 overflow-y-auto p-2">
+                    {(() => {
+                      const searchTerm = (window as any).__newGroupSearchTemp || '';
+                      const filteredGroups = groups.filter((g: any) => g.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                      if (filteredGroups.length === 0) {
+                        return <p className="text-xs text-slate-400 text-center py-2">没有找到小组</p>;
+                      }
+                      return filteredGroups.map((group: any) => (
+                        <label key={group.id} className="flex items-center gap-2 text-sm py-1 px-1 hover:bg-slate-50 rounded cursor-pointer">
+                          <input 
+                            type="checkbox"
+                            checked={folderGroups.includes(group.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setFolderGroups([...folderGroups, group.id]);
+                              } else {
+                                setFolderGroups(folderGroups.filter((g: number) => g !== group.id));
+                              }
+                            }}
+                            className="rounded"
+                          />
+                          {group.name}
+                        </label>
+                      ));
+                    })()}
+                  </div>
+                  {folderGroups.length > 0 && (
+                    <div className="p-2 border-t border-slate-100 bg-slate-50 text-xs text-slate-500">
+                      已选择 {folderGroups.length} 个小组
+                      <button 
+                        onClick={() => setFolderGroups([])}
+                        className="ml-2 text-blue-500 hover:underline"
+                      >
+                        清除全部
+                      </button>
+                    </div>
                   )}
-                </button>
+                </div>
               </div>
-          </motion.div>
-        </div>
-      )}
-
-      {showMoveModal && selectedFiles.length > 0 && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
-            <h3 className="text-xl font-bold mb-6">移动文件</h3>
-            <p className="text-sm text-slate-500 mb-4">选择目标文件夹（只能移动到当前目录的子文件夹）</p>
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              <button
-                onClick={async () => {
-                  for (const fileId of selectedFiles) {
-                    await fetch('/api/files/move', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ fileId, folderId: null })
-                    });
-                  }
-                  setShowMoveModal(false);
-                  setSelectedFiles([]);
-                  setParentId(null);
-                  onRefresh();
-                }}
-                className="w-full px-4 py-3 text-left rounded-xl hover:bg-blue-50 flex items-center gap-3"
-              >
-                <Home size={18} className="text-slate-500" />
-                <span>根目录</span>
-              </button>
-              {folders.filter(f => f.parent_id === parentId).map(folder => (
-                <button
-                  key={folder.id}
-                  onClick={async () => {
-                    for (const fileId of selectedFiles) {
-                      await fetch('/api/files/move', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ fileId, folderId: folder.id })
-                      });
-                    }
-                    setShowMoveModal(false);
-                    setSelectedFiles([]);
-                    setParentId(null);
-                    onRefresh();
-                  }}
-                  className="w-full px-4 py-3 text-left rounded-xl hover:bg-blue-50 flex items-center gap-3"
-                >
-                  <Folder size={18} className="text-blue-500" />
-                  <span>{folder.name}</span>
-                </button>
-              ))}
-              {folders.filter(f => f.parent_id === parentId).length === 0 && (
-                <p className="text-sm text-slate-400 text-center py-4">当前目录下没有子文件夹</p>
-              )}
-            </div>
-            <button onClick={() => setShowMoveModal(false)} className="w-full mt-4 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50">取消</button>
+            </>
+          )}
+          
+          <div className="flex gap-3 mt-8">
+            <button type="button" onClick={() => { setShowAddFolder(false); setFolderRoles(user?.role === 'student' ? ['student'] : ['admin', 'teacher']); setFolderGroups([]); }} className="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50">取消</button>
+            <button type="button" onClick={handleCreateFolder} className="flex-1 px-4 py-3 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-blue-700">创建</button>
           </div>
         </div>
-      )}
+      </Modal>
 
-      {showFolderMoveModal && selectedFolders.length > 0 && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
-            <h3 className="text-xl font-bold mb-6">移动文件夹</h3>
-            <p className="text-sm text-slate-500 mb-4">选择目标位置（只能移动到当前目录的子文件夹）</p>
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              <button
-                onClick={async () => {
-                  for (const folderId of selectedFolders) {
-                    await fetch(`/api/folders/${folderId}`, {
-                      method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ parentId: null })
-                    });
-                  }
-                  setShowFolderMoveModal(false);
-                  setSelectedFolders([]);
-                  setParentId(null);
-                  onRefresh();
-                }}
-                className="w-full px-4 py-3 text-left rounded-xl hover:bg-blue-50 flex items-center gap-3"
-              >
-                <Home size={18} className="text-slate-500" />
-                <span>根目录</span>
-              </button>
-              {folders.filter(f => f.parent_id === parentId && !selectedFolders.includes(f.id)).map(folder => (
-                <button
-                  key={folder.id}
-                onClick={async () => {
-                  for (const folderId of selectedFolders) {
-                    await fetch(`/api/folders/${folderId}`, {
-                      method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ parentId: folder.id })
-                    });
-                  }
-                  setShowFolderMoveModal(false);
-                  setSelectedFolders([]);
-                  setParentId(null);
-                  onRefresh();
-                }}
-                  className="w-full px-4 py-3 text-left rounded-xl hover:bg-blue-50 flex items-center gap-3"
-                >
-                  <Folder size={18} className="text-blue-500" />
-                  <span>{folder.name}</span>
-                </button>
-              ))}
-              {folders.filter(f => f.parent_id === parentId && !selectedFolders.includes(f.id)).length === 0 && (
-                <p className="text-sm text-slate-400 text-center py-4">当前目录下没有子文件夹</p>
-              )}
-            </div>
-            <button onClick={() => setShowFolderMoveModal(false)} className="w-full mt-4 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50">取消</button>
+      <Modal
+        isOpen={!!editingFolder}
+        onClose={() => { setEditingFolder(null); setEditFolderRoles([]); setEditFolderGroups([]); }}
+        title="编辑文件夹"
+      >
+        <form onSubmit={handleUpdateFolder} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">文件夹名称</label>
+            <input 
+              type="text" 
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
+              required
+            />
           </div>
-        </div>
-      )}
-
-      {showAddFolder && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
-            <h3 className="text-xl font-bold mb-6">新建文件夹</h3>
-            <div className="space-y-4">
+          
+          {(user?.role === 'admin' || user?.role === 'teacher') && (
+            <>
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">文件夹名称</label>
-                <input 
-                  type="text" 
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
-                  placeholder="请输入文件夹名称"
-                />
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">可见角色（不选则所有人可见）</label>
+                <div className="flex flex-wrap gap-2">
+                  {roles.map(role => (
+                    <label key={role.id} className="flex items-center gap-1 text-sm">
+                      <input 
+                        type="checkbox"
+                        checked={editFolderRoles.includes(role.name)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setEditFolderRoles([...editFolderRoles, role.name]);
+                          } else {
+                            setEditFolderRoles(editFolderRoles.filter(r => r !== role.name));
+                          }
+                        }}
+                        className="rounded"
+                      />
+                      {role.name === 'admin' ? '管理员' : role.name === 'teacher' ? '教师' : role.name === 'student' ? '学生' : role.name}
+                    </label>
+                  ))}
+                </div>
               </div>
               
-              {(user?.role === 'admin' || user?.role === 'teacher') && (
-                <>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">可见角色（不选则所有人可见）</label>
-                    <div className="flex flex-wrap gap-2">
-                      {roles.map(role => (
-                        <label key={role.id} className="flex items-center gap-1 text-sm">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">可见小组（不选则所有小组可见）</label>
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="p-2 border-b border-slate-100 bg-slate-50">
+                    <input 
+                      type="text" 
+                      placeholder="搜索小组..." 
+                      className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-blue-400"
+                      onChange={(e) => {
+                        const searchInput = e.target as HTMLInputElement;
+                        (window as any).__groupSearchTemp = searchInput.value;
+                      }}
+                    />
+                  </div>
+                  <div className="max-h-32 overflow-y-auto p-2">
+                    {(() => {
+                      const searchTerm = (window as any).__groupSearchTemp || '';
+                      const filteredGroups = groups.filter((g: any) => g.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                      if (filteredGroups.length === 0) {
+                        return <p className="text-xs text-slate-400 text-center py-2">没有找到小组</p>;
+                      }
+                      return filteredGroups.map((group: any) => (
+                        <label key={group.id} className="flex items-center gap-2 text-sm py-1 px-1 hover:bg-slate-50 rounded cursor-pointer">
                           <input 
                             type="checkbox"
-                            checked={folderRoles.includes(role.name)}
+                            checked={editFolderGroups.includes(group.id)}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setFolderRoles([...folderRoles, role.name]);
+                                setEditFolderGroups([...editFolderGroups, group.id]);
                               } else {
-                                setFolderRoles(folderRoles.filter(r => r !== role.name));
+                                setEditFolderGroups(editFolderGroups.filter((g: number) => g !== group.id));
                               }
                             }}
                             className="rounded"
                           />
-                          {role.name === 'admin' ? '管理员' : role.name === 'teacher' ? '教师' : role.name === 'student' ? '学生' : role.name}
+                          {group.name}
                         </label>
-                      ))}
-                    </div>
+                      ));
+                    })()}
                   </div>
-                  
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">可见小组（不选则所有小组可见）</label>
-                    <div className="border border-slate-200 rounded-lg overflow-hidden">
-                      <div className="p-2 border-b border-slate-100 bg-slate-50">
-                        <input 
-                          type="text" 
-                          placeholder="搜索小组..." 
-                          className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-blue-400"
-                          onChange={(e) => {
-                            const searchInput = e.target as HTMLInputElement;
-                            (window as any).__newGroupSearchTemp = searchInput.value;
-                          }}
-                        />
-                      </div>
-                      <div className="max-h-32 overflow-y-auto p-2">
-                        {(() => {
-                          const searchTerm = (window as any).__newGroupSearchTemp || '';
-                          const filteredGroups = groups.filter((g: any) => g.name.toLowerCase().includes(searchTerm.toLowerCase()));
-                          if (filteredGroups.length === 0) {
-                            return <p className="text-xs text-slate-400 text-center py-2">没有找到小组</p>;
-                          }
-                          return filteredGroups.map((group: any) => (
-                            <label key={group.id} className="flex items-center gap-2 text-sm py-1 px-1 hover:bg-slate-50 rounded cursor-pointer">
-                              <input 
-                                type="checkbox"
-                                checked={folderGroups.includes(group.id)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setFolderGroups([...folderGroups, group.id]);
-                                  } else {
-                                    setFolderGroups(folderGroups.filter((g: number) => g !== group.id));
-                                  }
-                                }}
-                                className="rounded"
-                              />
-                              {group.name}
-                            </label>
-                          ));
-                        })()}
-                      </div>
-                      {folderGroups.length > 0 && (
-                        <div className="p-2 border-t border-slate-100 bg-slate-50 text-xs text-slate-500">
-                          已选择 {folderGroups.length} 个小组
-                          <button 
-                            onClick={() => setFolderGroups([])}
-                            className="ml-2 text-blue-500 hover:underline"
-                          >
-                            清除全部
-                          </button>
-                        </div>
-                      )}
+                  {editFolderGroups.length > 0 && (
+                    <div className="p-2 border-t border-slate-100 bg-slate-50 text-xs text-slate-500">
+                      已选择 {editFolderGroups.length} 个小组
+                      <button 
+                        onClick={() => setEditFolderGroups([])}
+                        className="ml-2 text-blue-500 hover:underline"
+                      >
+                        清除全部
+                      </button>
                     </div>
-                  </div>
-                </>
-              )}
-              
-              <div className="flex gap-3 mt-8">
-                <button type="button" onClick={() => { setShowAddFolder(false); setFolderRoles(user?.role === 'student' ? ['student'] : ['admin', 'teacher']); setFolderGroups([]); }} className="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50">取消</button>
-                <button type="button" onClick={handleCreateFolder} className="flex-1 px-4 py-3 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-blue-700">创建</button>
+                  )}
+                </div>
               </div>
-            </div>
+            </>
+          )}
+          
+          <div className="flex gap-3 mt-8">
+            <button type="button" onClick={() => { setEditingFolder(null); setEditFolderRoles([]); setEditFolderGroups([]); }} className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium">取消</button>
+            <button type="submit" className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium">保存</button>
           </div>
-        </div>
-      )}
-
-      {editingFolder && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
-            <h3 className="text-xl font-bold mb-6">编辑文件夹</h3>
-            <form onSubmit={handleUpdateFolder} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">文件夹名称</label>
-                <input 
-                  type="text" 
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none"
-                  required
-                />
-              </div>
-              
-              {(user?.role === 'admin' || user?.role === 'teacher') && (
-                <>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">可见角色（不选则所有人可见）</label>
-                    <div className="flex flex-wrap gap-2">
-                      {roles.map(role => (
-                        <label key={role.id} className="flex items-center gap-1 text-sm">
-                          <input 
-                            type="checkbox"
-                            checked={editFolderRoles.includes(role.name)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setEditFolderRoles([...editFolderRoles, role.name]);
-                              } else {
-                                setEditFolderRoles(editFolderRoles.filter(r => r !== role.name));
-                              }
-                            }}
-                            className="rounded"
-                          />
-                          {role.name === 'admin' ? '管理员' : role.name === 'teacher' ? '教师' : role.name === 'student' ? '学生' : role.name}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">可见小组（不选则所有小组可见）</label>
-                    <div className="border border-slate-200 rounded-lg overflow-hidden">
-                      <div className="p-2 border-b border-slate-100 bg-slate-50">
-                        <input 
-                          type="text" 
-                          placeholder="搜索小组..." 
-                          className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-blue-400"
-                          onChange={(e) => {
-                            const searchInput = e.target as HTMLInputElement;
-                            (window as any).__groupSearchTemp = searchInput.value;
-                          }}
-                        />
-                      </div>
-                      <div className="max-h-32 overflow-y-auto p-2">
-                        {(() => {
-                          const searchTerm = (window as any).__groupSearchTemp || '';
-                          const filteredGroups = groups.filter((g: any) => g.name.toLowerCase().includes(searchTerm.toLowerCase()));
-                          if (filteredGroups.length === 0) {
-                            return <p className="text-xs text-slate-400 text-center py-2">没有找到小组</p>;
-                          }
-                          return filteredGroups.map((group: any) => (
-                            <label key={group.id} className="flex items-center gap-2 text-sm py-1 px-1 hover:bg-slate-50 rounded cursor-pointer">
-                              <input 
-                                type="checkbox"
-                                checked={editFolderGroups.includes(group.id)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setEditFolderGroups([...editFolderGroups, group.id]);
-                                  } else {
-                                    setEditFolderGroups(editFolderGroups.filter((g: number) => g !== group.id));
-                                  }
-                                }}
-                                className="rounded"
-                              />
-                              {group.name}
-                            </label>
-                          ));
-                        })()}
-                      </div>
-                      {editFolderGroups.length > 0 && (
-                        <div className="p-2 border-t border-slate-100 bg-slate-50 text-xs text-slate-500">
-                          已选择 {editFolderGroups.length} 个小组
-                          <button 
-                            onClick={() => setEditFolderGroups([])}
-                            className="ml-2 text-blue-500 hover:underline"
-                          >
-                            清除全部
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
-              
-              <div className="flex gap-3 mt-8">
-                <button type="button" onClick={() => { setEditingFolder(null); setEditFolderRoles([]); setEditFolderGroups([]); }} className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium">取消</button>
-                <button type="submit" className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium">保存</button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
       {previewFile && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setPreviewFile(null)}>
@@ -2216,7 +2337,7 @@ function FilesView({ files = [], onDelete, onRefresh, user }: { files: StudentFi
   );
 }
 
-function ClassesView({ classes = [], onRefresh }: { classes: Class[], onRefresh: () => void }) {
+function ClassesView({ classes = [], onRefresh, showNotification, showConfirm }: { classes: Class[], onRefresh: () => void, showNotification: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void, showConfirm: (options: { title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' }) => void }) {
   const [showImport, setShowImport] = useState(false);
   const [selectedClass, setSelectedClass] = useState<Class | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -2237,9 +2358,16 @@ function ClassesView({ classes = [], onRefresh }: { classes: Class[], onRefresh:
   };
 
   const handleDeleteClass = async (id: number) => {
-    if (!confirm('确定要删除该班级吗？')) return;
-    await fetch(`/api/classes/${id}`, { method: 'DELETE' });
-    onRefresh();
+    showConfirm({
+      title: '删除班级',
+      message: '确定要删除该班级吗？',
+      type: 'danger',
+      onConfirm: async () => {
+        await fetch(`/api/classes/${id}`, { method: 'DELETE' });
+        showNotification('success', '删除成功');
+        onRefresh();
+      }
+    });
   };
 
   const downloadTemplate = () => {
@@ -2262,7 +2390,7 @@ function ClassesView({ classes = [], onRefresh }: { classes: Class[], onRefresh:
 
   const handleImport = async () => {
     if (!importFile) {
-      alert('请先选择文件');
+      showNotification('warning', '请先选择文件');
       return;
     }
     setImporting(true);
@@ -2278,22 +2406,22 @@ function ClassesView({ classes = [], onRefresh }: { classes: Class[], onRefresh:
       if (!res.ok) {
         const errorData = await res.json();
         console.error('Import error:', errorData);
-        alert(errorData.message || '导入失败');
+        showNotification('error', errorData.message || '导入失败');
         return;
       }
       const result = await res.json();
       console.log('Import result:', result);
       if (result.success) {
-        alert(`导入成功：${result.classCount} 个班级，${result.studentCount} 个学生`);
+        showNotification('success', `导入成功：${result.classCount} 个班级，${result.studentCount} 个学生`);
         await onRefresh();
         setShowImport(false);
         setImportFile(null);
       } else {
-        alert(result.message || '导入失败');
+        showNotification('error', result.message || '导入失败');
       }
     } catch (error) {
       console.error('Import error:', error);
-      alert('导入失败: ' + (error as Error).message);
+      showNotification('error', '导入失败');
     } finally {
       setImporting(false);
     }
@@ -2301,18 +2429,25 @@ function ClassesView({ classes = [], onRefresh }: { classes: Class[], onRefresh:
 
   const handleBatchDeleteStudents = async () => {
     if (!selectedClass || selectedStudents.length === 0) return;
-    if (!confirm(`确定要删除选中的 ${selectedStudents.length} 名学生吗？`)) return;
-    setLoading(true);
-    try {
-      for (const id of selectedStudents) {
-        await fetch(`/api/students/${id}`, { method: 'DELETE' });
+    showConfirm({
+      title: '批量删除学生',
+      message: `确定要删除选中的 ${selectedStudents.length} 名学生吗？`,
+      type: 'danger',
+      onConfirm: async () => {
+        setLoading(true);
+        try {
+          for (const id of selectedStudents) {
+            await fetch(`/api/students/${id}`, { method: 'DELETE' });
+          }
+          showNotification('success', '删除成功');
+          setSelectedStudents([]);
+          fetchStudents(selectedClass.id);
+          onRefresh();
+        } finally {
+          setLoading(false);
+        }
       }
-      setSelectedStudents([]);
-      fetchStudents(selectedClass.id);
-      onRefresh();
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   const toggleStudentSelection = (id: number) => {
@@ -2364,152 +2499,154 @@ function ClassesView({ classes = [], onRefresh }: { classes: Class[], onRefresh:
         ))}
       </div>
 
-      {showImport && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl"
-          >
-            <h3 className="text-xl font-bold mb-2">导入班级数据</h3>
-            <p className="text-slate-500 text-sm mb-4">请上传包含学生信息的 Excel 或 CSV 文件</p>
-            
-            <div className="bg-blue-50 rounded-xl p-4 mb-6">
-              <p className="text-sm font-medium text-blue-700 mb-2">模板格式说明：</p>
-              <div className="text-xs text-blue-600 space-y-1">
-                <p>• 班级 - 班级名称（如：高二(1)班）</p>
-                <p>• 学生姓名 - 学生真实姓名</p>
-                <p>• 学生账号 - 登录用户名</p>
-                <p>• 密码 - 登录密码</p>
-                <p>• 权限 - 学生/教师</p>
-                <p>• 组 - 所属小组（可选）</p>
-              </div>
-              <button onClick={downloadTemplate} className="mt-3 text-sm text-blue-600 hover:text-blue-700 underline">
-                下载模板文件
-              </button>
-            </div>
-
-            <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer group mb-4">
-              <input 
-                type="file" 
-                accept=".xlsx,.xls,.csv,.txt"
-                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                className="hidden"
-                id="importFile"
-              />
-              <label htmlFor="importFile" className="cursor-pointer">
-                <div className="w-14 h-14 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-blue-50 transition-colors">
-                  <Upload className="text-slate-400 group-hover:text-blue-500" size={28} />
-                </div>
-                {importFile ? (
-                  <p className="text-sm font-medium text-blue-600">{importFile.name}</p>
-                ) : (
-                  <>
-                    <p className="text-sm font-medium text-slate-600">点击或拖拽文件至此处</p>
-                    <p className="text-xs text-slate-400 mt-1">支持 .xlsx, .csv, .txt (最大 10MB)</p>
-                  </>
-                )}
-              </label>
-            </div>
-
-            <div className="flex gap-3">
-              <button 
-                onClick={() => { setShowImport(false); setImportFile(null); }}
-                className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors"
-              >
-                取消
-              </button>
-              <button 
-                onClick={handleImport}
-                disabled={!importFile || importing}
-                className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {importing ? '导入中...' : '开始导入'}
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {selectedClass && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-3xl w-full shadow-2xl max-h-[80vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-xl font-bold">{selectedClass.name}</h3>
-                <p className="text-sm text-slate-500">学生管理 · 共 {students.length} 人</p>
-              </div>
-              <button onClick={() => { setSelectedClass(null); setSelectedStudents([]); }} className="text-slate-400 hover:text-slate-600">
-                <XCircle size={24} />
-              </button>
-            </div>
-            
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => setSelectedStudents(students.map(s => s.id))}
-                  className="text-sm text-blue-600 hover:underline"
-                >
-                  全选
-                </button>
-                <button 
-                  onClick={() => setSelectedStudents([])}
-                  className="text-sm text-slate-500 hover:underline"
-                >
-                  取消选择
-                </button>
-              </div>
-              {selectedStudents.length > 0 && (
-                <button onClick={handleBatchDeleteStudents} disabled={loading} className="bg-rose-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-rose-700 disabled:opacity-50">
-                  <Trash2 size={16} />
-                  批量删除 ({selectedStudents.length})
-                </button>
-              )}
-            </div>
-            
-            {students.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Users className="text-slate-300" size={32} />
-                </div>
-                <p className="text-slate-400">暂无学生数据</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {students.map(s => (
-                  <div 
-                    key={s.id} 
-                    onClick={() => toggleStudentSelection(s.id)}
-                    className={`relative p-4 rounded-2xl border-2 cursor-pointer transition-all ${
-                      selectedStudents.includes(s.id) 
-                        ? 'border-blue-500 bg-blue-50' 
-                        : 'border-slate-100 bg-white hover:border-blue-200 hover:shadow-md'
-                    }`}
-                  >
-                    <div className="absolute top-2 right-2">
-                      {selectedStudents.includes(s.id) ? 
-                        <CheckSquare size={20} className="text-blue-600" /> : 
-                        <Square size={20} className="text-slate-200" />
-                      }
-                    </div>
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-xl font-bold mx-auto mb-3">
-                      {s.name.charAt(0)}
-                    </div>
-                    <p className="font-medium text-center truncate">{s.name}</p>
-                    <p className="text-xs text-slate-400 text-center mt-1">{s.student_id}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+      <Modal
+        isOpen={showImport}
+        onClose={() => { setShowImport(false); setImportFile(null); }}
+        title="导入班级数据"
+        size="lg"
+        disableAnimation
+      >
+        <p className="text-slate-500 text-sm mb-4">请上传包含学生信息的 Excel 或 CSV 文件</p>
+        
+        <div className="bg-blue-50 rounded-xl p-4 mb-6">
+          <p className="text-sm font-medium text-blue-700 mb-2">模板格式说明：</p>
+          <div className="text-xs text-blue-600 space-y-1">
+            <p>• 班级 - 班级名称（如：高二(1)班）</p>
+            <p>• 学生姓名 - 学生真实姓名</p>
+            <p>• 学生账号 - 登录用户名</p>
+            <p>• 密码 - 登录密码</p>
+            <p>• 权限 - 学生/教师</p>
+            <p>• 组 - 所属小组（可选）</p>
           </div>
+          <button onClick={downloadTemplate} className="mt-3 text-sm text-blue-600 hover:text-blue-700 underline">
+            下载模板文件
+          </button>
         </div>
-      )}
+
+        <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer group mb-4">
+          <input 
+            type="file" 
+            accept=".xlsx,.xls,.csv,.txt"
+            onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+            className="hidden"
+            id="importFile"
+          />
+          <label htmlFor="importFile" className="cursor-pointer">
+            <div className="w-14 h-14 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-blue-50 transition-colors">
+              <Upload className="text-slate-400 group-hover:text-blue-500" size={28} />
+            </div>
+            {importFile ? (
+              <p className="text-sm font-medium text-blue-600">{importFile.name}</p>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-slate-600">点击或拖拽文件至此处</p>
+                <p className="text-xs text-slate-400 mt-1">支持 .xlsx, .csv, .txt (最大 10MB)</p>
+              </>
+            )}
+          </label>
+        </div>
+
+        <div className="flex gap-3">
+          <button 
+            onClick={() => { setShowImport(false); setImportFile(null); }}
+            className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors"
+          >
+            取消
+          </button>
+          <button 
+            onClick={handleImport}
+            disabled={!importFile || importing}
+            className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {importing ? '导入中...' : '开始导入'}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!selectedClass}
+        onClose={() => { setSelectedClass(null); setSelectedStudents([]); }}
+        title={selectedClass?.name || ''}
+        size="xl"
+        showCloseButton={false}
+        disableAnimation
+      >
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h3 className="text-xl font-bold">{selectedClass?.name}</h3>
+            <p className="text-sm text-slate-500">学生管理 · 共 {students.length} 人</p>
+          </div>
+          <button onClick={() => { setSelectedClass(null); setSelectedStudents([]); }} className="text-slate-400 hover:text-slate-600">
+            <XCircle size={24} />
+          </button>
+        </div>
+        
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setSelectedStudents(students.map(s => s.id))}
+              className="text-sm text-blue-600 hover:underline"
+            >
+              全选
+            </button>
+            <button 
+              onClick={() => setSelectedStudents([])}
+              className="text-sm text-slate-500 hover:underline"
+            >
+              取消选择
+            </button>
+          </div>
+          {selectedStudents.length > 0 && (
+            <button onClick={handleBatchDeleteStudents} disabled={loading} className="bg-rose-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-rose-700 disabled:opacity-50">
+              <Trash2 size={16} />
+              批量删除 ({selectedStudents.length})
+            </button>
+          )}
+        </div>
+        
+        {students.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Users className="text-slate-300" size={32} />
+            </div>
+            <p className="text-slate-400">暂无学生数据</p>
+          </div>
+        ) : (
+          <div className="max-h-[60vh] overflow-y-auto pr-2 -mr-2 scrollbar-thin">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {students.map(s => (
+                <div 
+                  key={s.id} 
+                  onClick={() => toggleStudentSelection(s.id)}
+                  className={`relative p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                    selectedStudents.includes(s.id) 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : 'border-slate-100 bg-white hover:border-blue-200 hover:shadow-md'
+                  }`}
+                >
+                  <div className="absolute top-1 right-1">
+                    {selectedStudents.includes(s.id) ? 
+                      <CheckSquare size={16} className="text-blue-600" /> : 
+                      <Square size={16} className="text-slate-200" />
+                    }
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-lg font-bold mx-auto mb-2">
+                    {s.name.charAt(0)}
+                  </div>
+                  <p className="font-medium text-sm text-center truncate">{s.name}</p>
+                  <p className="text-xs text-slate-400 text-center truncate">{s.student_id}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
 
 
-function RolesView() {
+function RolesView({ showNotification, showConfirm }: { showNotification: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void, showConfirm: (options: { title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' }) => void }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [newRole, setNewRole] = useState({ name: '', description: '', permissions: [] as string[] });
@@ -2543,6 +2680,7 @@ function RolesView() {
       body: JSON.stringify(newRole)
     });
     if (res.ok) {
+      showNotification('success', '新增角色成功');
       fetchRoles();
       setShowAdd(false);
       setNewRole({ name: '', description: '', permissions: [] });
@@ -2550,15 +2688,21 @@ function RolesView() {
   };
 
   const handleDeleteRole = async (id: number) => {
-    if (confirm('确定要删除该角色吗？')) {
-      const res = await fetch(`/api/roles/${id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const data = await res.json();
-        alert(data.message);
-      } else {
-        fetchRoles();
+    showConfirm({
+      title: '删除角色',
+      message: '确定要删除该角色吗？',
+      type: 'danger',
+      onConfirm: async () => {
+        const res = await fetch(`/api/roles/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json();
+          showNotification('error', data.message);
+        } else {
+          showNotification('success', '删除成功');
+          fetchRoles();
+        }
       }
-    }
+    });
   };
 
   const handleUpdateRole = async (e: React.FormEvent) => {
@@ -2570,6 +2714,7 @@ function RolesView() {
       body: JSON.stringify({ name: editingRole.name, description: editingRole.description, permissions: editingRole.permissions })
     });
     if (res.ok) {
+      showNotification('success', '修改角色成功');
       fetchRoles();
       setEditingRole(null);
     }
@@ -2819,9 +2964,9 @@ function SettingsView({ onSettingsChange }: { onSettingsChange?: () => void }) {
       }
       setSettings(prev => ({ ...prev, [key]: value }));
       if (onSettingsChange) onSettingsChange();
-      alert('保存成功');
+      showNotification('success', '保存成功');
     } catch (e) {
-      alert('保存失败');
+      showNotification('error', '保存失败');
     } finally {
       setSaving(false);
     }
@@ -2916,7 +3061,7 @@ function SettingsView({ onSettingsChange }: { onSettingsChange?: () => void }) {
   );
 }
 
-function GroupsView({ classes }: { classes: Class[] }) {
+function GroupsView({ classes, showNotification, showConfirm }: { classes: Class[], showNotification: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void, showConfirm: (options: { title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' }) => void }) {
   const [selectedClass, setSelectedClass] = useState<number | ''>('');
   const [students, setStudents] = useState<{id: number; name: string; group_id: number | null}[]>([]);
   const [groups, setGroups] = useState<{id: number; name: string; studentIds: number[]}[]>([]);
@@ -2958,13 +3103,13 @@ function GroupsView({ classes }: { classes: Class[] }) {
 
   const handleRandomGroup = async () => {
     if (!selectedClass || students.length === 0) {
-      alert('请先选择班级并确保有学生');
+      showNotification('warning', '请先选择班级并确保有学生');
       return;
     }
     const { method, value } = randomGroupConfig;
     const numGroups = method === 'count' ? Number(value) : Math.ceil(students.length / Number(value));
     if (numGroups <= 0 || numGroups > students.length) {
-      alert('分组数量无效');
+      showNotification('warning', '分组数量无效');
       return;
     }
     setLoading(true);
@@ -2980,12 +3125,12 @@ function GroupsView({ classes }: { classes: Class[] }) {
           body: JSON.stringify({ name: `第${i + 1}组`, classId: selectedClass, studentIds })
         });
       }
-      alert(`成功创建 ${numGroups} 个随机分组`);
+      showNotification('success', `成功创建 ${numGroups} 个随机分组`);
       setShowRandomGroup(false);
       fetchGroups(selectedClass);
       fetchStudents(selectedClass);
     } catch (error) {
-      alert('随机分组失败');
+      showNotification('error', '随机分组失败');
     } finally {
       setLoading(false);
     }
@@ -2993,7 +3138,7 @@ function GroupsView({ classes }: { classes: Class[] }) {
 
   const handleCreateGroup = async () => {
     if (!selectedClass || !newGroupName.trim()) {
-      alert('请选择班级并输入小组名称');
+      showNotification('warning', '请选择班级并输入小组名称');
       return;
     }
     setLoading(true);
@@ -3003,11 +3148,12 @@ function GroupsView({ classes }: { classes: Class[] }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newGroupName, classId: selectedClass, studentIds: [] })
       });
+      showNotification('success', '创建小组成功');
       setNewGroupName('');
       setShowCreateGroup(false);
       fetchGroups(selectedClass);
     } catch (error) {
-      alert('创建小组失败');
+      showNotification('error', '创建小组失败');
     } finally {
       setLoading(false);
     }
@@ -3030,24 +3176,31 @@ function GroupsView({ classes }: { classes: Class[] }) {
       setShowEditGroup(null);
       fetchGroups(selectedClass);
     } catch (error) {
-      alert('更新小组失败');
+      showNotification('error', '更新小组失败');
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteGroup = async (id: number) => {
-    if (!confirm('确定要删除该小组吗？')) return;
-    setLoading(true);
-    try {
-      await fetch(`/api/groups/${id}`, { method: 'DELETE' });
-      fetchGroups(selectedClass);
-      fetchStudents(selectedClass);
-    } catch (error) {
-      alert('删除小组失败');
-    } finally {
-      setLoading(false);
-    }
+    showConfirm({
+      title: '删除小组',
+      message: '确定要删除该小组吗？',
+      type: 'danger',
+      onConfirm: async () => {
+        setLoading(true);
+        try {
+          await fetch(`/api/groups/${id}`, { method: 'DELETE' });
+          showNotification('success', '删除成功');
+          fetchGroups(selectedClass);
+          fetchStudents(selectedClass);
+        } catch (error) {
+          showNotification('error', '删除小组失败');
+        } finally {
+          setLoading(false);
+        }
+      }
+    });
   };
 
   const handleAddStudentsToGroup = (group: {id: number; name: string}) => {
@@ -3070,7 +3223,7 @@ function GroupsView({ classes }: { classes: Class[] }) {
       fetchGroups(selectedClass);
       fetchStudents(selectedClass);
     } catch (error) {
-      alert('保存小组成员失败');
+      showNotification('error', '保存小组成员失败');
     } finally {
       setLoading(false);
     }
