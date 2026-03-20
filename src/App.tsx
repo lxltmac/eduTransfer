@@ -879,7 +879,10 @@ function AccountsView({ showConfirm, showNotification }: { showConfirm: (options
     setSelectedUsers(prev => prev.includes(id) ? prev.filter(uid => uid !== id) : [...prev, id]);
   };
 
-  const filteredUsers = users.filter(u => !searchQuery || u.name.toLowerCase().includes(searchQuery.toLowerCase()) || u.username.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredUsers = users.filter(u => 
+    (u.role === 'admin' || u.role === 'teacher' || u.role === 'student') &&
+    (!searchQuery || u.name.toLowerCase().includes(searchQuery.toLowerCase()) || u.username.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
 
   const groupedUsers = {
     admin: filteredUsers.filter(u => u.role === 'admin'),
