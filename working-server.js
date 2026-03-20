@@ -88,13 +88,15 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id INTEGER,
     name TEXT NOT NULL,
-    file_type TEXT NOT NULL, -- audio, ppt, pdf, image, video, other
+    file_type TEXT NOT NULL,
     file_url TEXT,
-    file_size INTEGER, -- in bytes
+    file_size INTEGER,
     uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     uploader_name TEXT,
     uploader_username TEXT,
     folder_id INTEGER,
+    role_ids TEXT,
+    group_ids TEXT,
     FOREIGN KEY(student_id) REFERENCES students(id),
     FOREIGN KEY(folder_id) REFERENCES folders(id)
   );
@@ -104,9 +106,36 @@ db.exec(`
     name TEXT NOT NULL,
     parent_id INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    role_ids TEXT,
+    group_ids TEXT,
     FOREIGN KEY(parent_id) REFERENCES folders(id)
   );
 `);
+try {
+  const filesColumns = db.prepare("PRAGMA table_info(files)").all();
+  const filesColumnNames = filesColumns.map((c) => c.name);
+  if (!filesColumnNames.includes("role_ids")) {
+    console.log("[MIGRATION] Adding role_ids to files table");
+    db.exec("ALTER TABLE files ADD COLUMN role_ids TEXT");
+  }
+  if (!filesColumnNames.includes("group_ids")) {
+    console.log("[MIGRATION] Adding group_ids to files table");
+    db.exec("ALTER TABLE files ADD COLUMN group_ids TEXT");
+  }
+  const foldersColumns = db.prepare("PRAGMA table_info(folders)").all();
+  const foldersColumnNames = foldersColumns.map((c) => c.name);
+  if (!foldersColumnNames.includes("role_ids")) {
+    console.log("[MIGRATION] Adding role_ids to folders table");
+    db.exec("ALTER TABLE folders ADD COLUMN role_ids TEXT");
+  }
+  if (!foldersColumnNames.includes("group_ids")) {
+    console.log("[MIGRATION] Adding group_ids to folders table");
+    db.exec("ALTER TABLE folders ADD COLUMN group_ids TEXT");
+  }
+  console.log("[MIGRATION] Permission columns added successfully");
+} catch (e) {
+  console.log("[MIGRATION] Permission columns already exist or error:", e);
+}
 try {
   const menusTableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='menus'").get();
   if (!menusTableExists) {
@@ -297,9 +326,14 @@ async function startServer() {
     }
   });
   app.put("/api/users/:id", (req, res) => {
-    const { name, role, avatar } = req.body;
+    const { name, role, avatar, password } = req.body;
     try {
-      db.prepare("UPDATE users SET name = ?, role = ?, avatar = ? WHERE id = ?").run(name, role, avatar, req.params.id);
+      if (password && password.length > 0) {
+        const hashedPassword = crypto.createHash("md5").update(password).digest("hex");
+        db.prepare("UPDATE users SET name = ?, role = ?, avatar = ?, password = ? WHERE id = ?").run(name, role, avatar, hashedPassword, req.params.id);
+      } else {
+        db.prepare("UPDATE users SET name = ?, role = ?, avatar = ? WHERE id = ?").run(name, role, avatar, req.params.id);
+      }
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ success: false, message: "\u66F4\u65B0\u5931\u8D25" });
@@ -308,6 +342,78 @@ async function startServer() {
   app.delete("/api/users/:id", (req, res) => {
     db.prepare("DELETE FROM users WHERE id = ?").run(req.params.id);
     res.json({ success: true });
+  });
+  app.post("/api/users/import", upload.single("file"), (req, res) => {
+    console.log("[USER IMPORT] Starting import...");
+    const file = req.file;
+    if (!file) {
+      console.log("[USER IMPORT] No file received");
+      return res.status(400).json({ success: false, message: "\u8BF7\u9009\u62E9\u6587\u4EF6" });
+    }
+    console.log("[USER IMPORT] File received:", file.originalname, file.size);
+    try {
+      const fileName = file.originalname.toLowerCase();
+      let data;
+      if (fileName.endsWith(".csv") || fileName.endsWith(".txt")) {
+        const text = fs.readFileSync(file.path, "utf8");
+        const lines = text.split(/\r?\n/).filter((line) => line.trim());
+        data = lines.map((line) => {
+          let parts = line.split("	");
+          if (parts.length === 1) parts = line.split(",");
+          return parts.map((p) => p.trim().replace(/^"|"$/g, ""));
+        });
+      } else {
+        const fileContent = fs.readFileSync(file.path);
+        const workbook = XLSX.read(fileContent, { type: "buffer" });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        data = jsonData.map((row) => {
+          if (Array.isArray(row)) return row;
+          return Object.values(row || {});
+        });
+      }
+      console.log("[USER IMPORT] Parsed rows:", data.length);
+      if (data.length < 2) {
+        return res.status(400).json({ success: false, message: "\u6587\u4EF6\u4E3A\u7A7A\u6216\u683C\u5F0F\u9519\u8BEF" });
+      }
+      const rows = data.slice(1);
+      let count = 0;
+      const insertUser = db.prepare("INSERT OR IGNORE INTO users (username, password, role, name, avatar) VALUES (?, ?, ?, ?, ?)");
+      rows.forEach((row) => {
+        if (!row || !Array.isArray(row)) return;
+        const username = String(row[0] || "").trim();
+        const password = String(row[1] || "123456").trim();
+        const name = String(row[2] || "").trim();
+        const role = row[3] ? String(row[3]).trim().toLowerCase() : "student";
+        if (!username || !name) return;
+        const normalizedRole = role === "\u7BA1\u7406\u5458" || role === "admin" ? "admin" : role === "\u6559\u5E08" || role === "teacher" ? "teacher" : "student";
+        try {
+          insertUser.run(
+            username,
+            password,
+            normalizedRole,
+            name,
+            `https://picsum.photos/seed/${username}/100/100`
+          );
+          count++;
+        } catch (e) {
+          console.log("[USER IMPORT] Skip duplicate:", username);
+        }
+      });
+      console.log("[USER IMPORT] Success:", count, "users");
+      res.json({
+        success: true,
+        count,
+        message: `\u6210\u529F\u5BFC\u5165 ${count} \u4E2A\u8D26\u53F7`
+      });
+    } catch (error) {
+      console.error("[USER IMPORT] Error:", error);
+      res.status(500).json({
+        success: false,
+        message: "\u5BFC\u5165\u5931\u8D25: " + error.message
+      });
+    }
   });
   app.get("/api/classes", (req, res) => {
     const classes = db.prepare("SELECT * FROM classes").all();
@@ -474,17 +580,24 @@ async function startServer() {
       JOIN classes c ON st.class_id = c.id
     `;
     let params = [];
+    let whereClause = "";
     if (user.role === "admin" || user.role === "teacher") {
       query += " ORDER BY f.uploaded_at DESC";
     } else if (user.role === "student" && user.student_id) {
       const student = db.prepare("SELECT group_id FROM students WHERE id = ?").get(user.student_id);
-      if (student && student.group_id) {
-        query += " WHERE st.group_id = ? ORDER BY f.uploaded_at DESC";
-        params.push(student.group_id);
-      } else {
-        query += " WHERE f.student_id = ? ORDER BY f.uploaded_at DESC";
-        params.push(user.student_id);
+      const userGroupId = student?.group_id || null;
+      const conditions = [
+        "(f.role_ids IS NULL AND f.group_ids IS NULL)",
+        "(f.role_ids LIKE '%student%')",
+        "(f.student_id = ?)"
+      ];
+      params.push(user.student_id);
+      if (userGroupId) {
+        conditions.push("(EXISTS (SELECT 1 FROM json_each(f.group_ids) WHERE json_each.value = ?))");
+        params.push(userGroupId);
       }
+      whereClause = " WHERE " + conditions.join(" OR ");
+      query += whereClause + " ORDER BY f.uploaded_at DESC";
     } else {
       return res.json([]);
     }
@@ -496,24 +609,25 @@ async function startServer() {
     console.log("[UPLOAD] Headers:", req.headers);
     console.log("[UPLOAD] Body keys:", Object.keys(req.body));
     console.log("[UPLOAD] Body values:", req.body);
-    const { studentId, fileType } = req.body;
+    const { studentId, fileType, role_ids, group_ids } = req.body;
     const file = req.file;
-    console.log("[UPLOAD] Extracted values:", { studentId, fileType });
+    console.log("[UPLOAD] Extracted values:", { studentId, fileType, role_ids, group_ids });
     console.log("[UPLOAD] File info:", { filename: file?.filename, originalname: file?.originalname });
     if (!file) {
       console.log("[UPLOAD] No file received");
       return res.status(400).json({ success: false, message: "\u672A\u9009\u62E9\u6587\u4EF6" });
     }
-    const uuid = crypto.randomUUID();
     const name = Buffer.from(file.originalname, "latin1").toString("utf8");
     const fileSize = file.size;
-    const fileUrl = `/uploads/${uuid}_${file.filename}`;
+    const fileUrl = `/uploads/${file.filename}`;
     console.log("[UPLOAD] File processing:", { name, fileSize, fileUrl });
     const uploader = db.prepare("SELECT u.username, u.name FROM users u WHERE u.student_id = ?").get(studentId);
     console.log("[UPLOAD] Uploader:", uploader);
     console.log("[UPLOAD] About to insert:", { studentId, name, fileType, fileUrl, fileSize, uploaderName: uploader?.name || "\u672A\u77E5", uploaderUsername: uploader?.username || "unknown" });
     try {
-      const result = db.prepare("INSERT INTO files (student_id, name, file_type, file_url, file_size, uploader_name, uploader_username) VALUES (?, ?, ?, ?, ?, ?, ?)").run(studentId, name, fileType, fileUrl, fileSize, uploader?.name || "\u672A\u77E5", uploader?.username || "unknown");
+      const roleIdsJson = role_ids ? JSON.stringify(role_ids) : null;
+      const groupIdsJson = group_ids ? JSON.stringify(group_ids) : null;
+      const result = db.prepare("INSERT INTO files (student_id, name, file_type, file_url, file_size, uploader_name, uploader_username, role_ids, group_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(studentId, name, fileType, fileUrl, fileSize, uploader?.name || "\u672A\u77E5", uploader?.username || "unknown", roleIdsJson, groupIdsJson);
       console.log("[UPLOAD] Success:", result);
       res.json({ success: true });
     } catch (e) {
@@ -563,7 +677,30 @@ async function startServer() {
   });
   app.get("/api/folders", (req, res) => {
     try {
-      const folders = db.prepare("SELECT * FROM folders ORDER BY created_at DESC").all();
+      const { userId } = req.query;
+      if (!userId) {
+        return res.json({ success: true, folders: [] });
+      }
+      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
+      if (!user) {
+        return res.json({ success: true, folders: [] });
+      }
+      let folders;
+      if (user.role === "admin" || user.role === "teacher") {
+        folders = db.prepare("SELECT * FROM folders ORDER BY created_at DESC").all();
+      } else if (user.role === "student" && user.student_id) {
+        const student = db.prepare("SELECT group_id FROM students WHERE id = ?").get(user.student_id);
+        const userGroupId = student?.group_id || null;
+        folders = db.prepare(`
+          SELECT DISTINCT f.* FROM folders f
+          WHERE (f.role_ids IS NULL AND f.group_ids IS NULL)
+             OR (f.role_ids LIKE '%student%')
+             OR EXISTS (SELECT 1 FROM json_each(f.group_ids) WHERE json_each.value = ?)
+          ORDER BY f.created_at DESC
+        `).all(userGroupId);
+      } else {
+        folders = [];
+      }
       res.json({ success: true, folders });
     } catch (e) {
       console.error("[FOLDERS GET] Error:", e);
@@ -571,12 +708,19 @@ async function startServer() {
     }
   });
   app.post("/api/folders", (req, res) => {
-    const { name, parent_id } = req.body;
+    const { name, parent_id, role_ids, group_ids } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: "\u6587\u4EF6\u5939\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A" });
     }
     try {
-      const result = db.prepare("INSERT INTO folders (name, parent_id) VALUES (?, ?)").run(name.trim(), parent_id || null);
+      const roleIdsJson = role_ids ? JSON.stringify(role_ids) : null;
+      const groupIdsJson = group_ids ? JSON.stringify(group_ids) : null;
+      const result = db.prepare("INSERT INTO folders (name, parent_id, role_ids, group_ids) VALUES (?, ?, ?, ?)").run(
+        name.trim(),
+        parent_id || null,
+        roleIdsJson,
+        groupIdsJson
+      );
       res.json({ success: true, folderId: result.lastInsertRowid });
     } catch (e) {
       console.error("[FOLDER CREATE] Error:", e);
@@ -584,26 +728,24 @@ async function startServer() {
     }
   });
   app.put("/api/folders/:id", (req, res) => {
-    const { name, parentId } = req.body;
-    console.log("[FOLDER UPDATE] name:", name, "parentId:", parentId);
-    if (parentId !== void 0 && parentId !== null) {
-      try {
+    const { name, parentId, role_ids, group_ids } = req.body;
+    console.log("[FOLDER UPDATE] name:", name, "parentId:", parentId, "role_ids:", role_ids, "group_ids:", group_ids);
+    try {
+      if (role_ids !== void 0 || group_ids !== void 0) {
+        const roleIdsJson = role_ids ? JSON.stringify(role_ids) : null;
+        const groupIdsJson = group_ids ? JSON.stringify(group_ids) : null;
+        db.prepare("UPDATE folders SET role_ids = ?, group_ids = ? WHERE id = ?").run(roleIdsJson, groupIdsJson, req.params.id);
+      }
+      if (parentId !== void 0 && parentId !== null) {
         db.prepare("UPDATE folders SET parent_id = ? WHERE id = ?").run(parentId, req.params.id);
-        res.json({ success: true });
-      } catch (e) {
-        console.error("[FOLDER UPDATE] Error:", e);
-        res.status(500).json({ success: false, message: "\u66F4\u65B0\u6587\u4EF6\u5939\u5931\u8D25" });
       }
-    } else if (name && name.trim()) {
-      try {
+      if (name && name.trim()) {
         db.prepare("UPDATE folders SET name = ? WHERE id = ?").run(name.trim(), req.params.id);
-        res.json({ success: true });
-      } catch (e) {
-        console.error("[FOLDER UPDATE] Error:", e);
-        res.status(500).json({ success: false, message: "\u66F4\u65B0\u6587\u4EF6\u5939\u5931\u8D25" });
       }
-    } else {
-      return res.status(400).json({ success: false, message: "\u6587\u4EF6\u5939\u540D\u79F0\u6216\u7236\u6587\u4EF6\u5939\u4E0D\u80FD\u4E3A\u7A7A" });
+      res.json({ success: true });
+    } catch (e) {
+      console.error("[FOLDER UPDATE] Error:", e);
+      res.status(500).json({ success: false, message: "\u66F4\u65B0\u6587\u4EF6\u5939\u5931\u8D25" });
     }
   });
   app.delete("/api/folders/:id", (req, res) => {
@@ -616,6 +758,29 @@ async function startServer() {
     } catch (e) {
       console.error("[FOLDER DELETE] Error:", e);
       res.status(500).json({ success: false, message: "\u5220\u9664\u6587\u4EF6\u5939\u5931\u8D25" });
+    }
+  });
+  app.post("/api/folders/batch-delete", (req, res) => {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, message: "\u8BF7\u9009\u62E9\u8981\u5220\u9664\u7684\u6587\u4EF6\u5939" });
+    }
+    try {
+      const deleteFolderStmt = db.prepare("DELETE FROM folders WHERE id = ?");
+      const updateFilesStmt = db.prepare("UPDATE files SET folder_id = NULL WHERE folder_id = ?");
+      const updateFoldersStmt = db.prepare("UPDATE folders SET parent_id = NULL WHERE parent_id = ?");
+      const deleteMany = db.transaction((folderIds) => {
+        for (const id of folderIds) {
+          updateFilesStmt.run(id);
+          updateFoldersStmt.run(id);
+          deleteFolderStmt.run(id);
+        }
+      });
+      deleteMany(ids);
+      res.json({ success: true, message: `\u6210\u529F\u5220\u9664 ${ids.length} \u4E2A\u6587\u4EF6\u5939` });
+    } catch (e) {
+      console.error("[FOLDERS BATCH DELETE] Error:", e);
+      res.status(500).json({ success: false, message: "\u6279\u91CF\u5220\u9664\u6587\u4EF6\u5939\u5931\u8D25" });
     }
   });
   app.post("/api/folders/move", (req, res) => {

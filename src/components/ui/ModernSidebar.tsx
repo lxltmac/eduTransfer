@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Users,
   FileCheck,
@@ -73,6 +73,26 @@ export function ModernSidebar({
   onToggleCollapse,
 }: ModernSidebarProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showResults, setShowResults] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const visibleMainItems = navigationItems.filter(item => 
+    !item.permission || hasPermission(item.permission)
+  );
+  
+  const visibleAdminItems = adminItems.filter(item => 
+    !item.permission || hasPermission(item.permission)
+  );
+
+  const allVisibleItems = [...visibleMainItems, ...visibleAdminItems];
+  
+  const searchResults = searchQuery.trim() 
+    ? allVisibleItems.filter(item => 
+        item.name.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : [];
 
   useEffect(() => {
     const handleResize = () => {
@@ -85,20 +105,46 @@ export function ModernSidebar({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowResults(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const handleNavClick = (tab: Tab) => {
     onTabChange(tab);
+    setSearchQuery('');
+    setShowResults(false);
     if (window.innerWidth < 768) {
       setIsMobileOpen(false);
     }
   };
 
-  const visibleMainItems = navigationItems.filter(item => 
-    !item.permission || hasPermission(item.permission)
-  );
-  
-  const visibleAdminItems = adminItems.filter(item => 
-    !item.permission || hasPermission(item.permission)
-  );
+  const handleSearchFocus = () => {
+    if (searchQuery.trim()) {
+      setShowResults(true);
+    }
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+    setShowResults(value.trim().length > 0);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setSearchQuery('');
+      setShowResults(false);
+      inputRef.current?.blur();
+    } else if (e.key === 'Enter' && searchResults.length > 0) {
+      handleNavClick(searchResults[0].id);
+    }
+  };
 
   return (
     <>
@@ -154,15 +200,60 @@ export function ModernSidebar({
         </div>
 
         {!isCollapsed && (
-          <div className="px-4 py-4">
+          <div className="px-4 py-4" ref={searchRef}>
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
+                ref={inputRef}
                 type="text"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                onFocus={handleSearchFocus}
+                onKeyDown={handleKeyDown}
                 placeholder="搜索功能..."
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all duration-200 shadow-sm"
+                className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all duration-200 shadow-sm"
               />
+              {searchQuery && (
+                <button
+                  onClick={() => { setSearchQuery(''); setShowResults(false); }}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <span className="text-xs">✕</span>
+                </button>
+              )}
             </div>
+
+            {showResults && searchResults.length > 0 && (
+              <div className="absolute z-50 mt-2 left-4 right-4 bg-white rounded-xl border border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden">
+                <div className="py-1">
+                  {searchResults.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => handleNavClick(item.id)}
+                        className={`
+                          w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors
+                          ${isActive ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
+                        `}
+                      >
+                        <Icon className={`h-4 w-4 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} size={18} />
+                        <span className={isActive ? 'font-medium' : ''}>{item.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {showResults && searchResults.length === 0 && searchQuery.trim() && (
+              <div className="absolute z-50 mt-2 left-4 right-4 bg-white rounded-xl border border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden">
+                <div className="px-4 py-4 text-center text-sm text-slate-400">
+                  未找到匹配的功能
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -174,19 +265,22 @@ export function ModernSidebar({
             {visibleMainItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
+              const matchesSearch = searchQuery.trim() && item.name.toLowerCase().includes(searchQuery.toLowerCase());
               return (
                 <li key={item.id} className="relative">
                   <button
                     onClick={() => handleNavClick(item.id)}
                     className={`
                       w-full flex items-center gap-3 transition-all duration-200 group relative
-                      ${isActive 
-                        ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30" 
-                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}
+                      ${matchesSearch 
+                        ? "bg-blue-100 text-blue-700" 
+                        : isActive 
+                          ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30" 
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}
                       ${isCollapsed ? "justify-center p-3 rounded-xl" : "px-4 py-3 rounded-xl"}
                     `}
                   >
-                    <Icon className={`h-5 w-5 flex-shrink-0 ${isActive ? "text-white" : "text-slate-500 group-hover:text-slate-700"}`} size={22} />
+                    <Icon className={`h-5 w-5 flex-shrink-0 ${matchesSearch ? "text-blue-600" : isActive ? "text-white" : "text-slate-500 group-hover:text-slate-700"}`} size={22} />
                     {!isCollapsed && <span className={`text-sm font-medium ${isActive ? "font-semibold" : ""}`}>{item.name}</span>}
                     {isCollapsed && (
                       <div className="absolute left-full ml-3 px-3 py-2 bg-slate-800 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50 shadow-xl">
@@ -210,19 +304,22 @@ export function ModernSidebar({
                 {visibleAdminItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
+                  const matchesSearch = searchQuery.trim() && item.name.toLowerCase().includes(searchQuery.toLowerCase());
                   return (
                     <li key={item.id} className="relative">
                       <button
                         onClick={() => handleNavClick(item.id)}
                         className={`
                           w-full flex items-center gap-3 transition-all duration-200 group relative
-                          ${isActive 
-                            ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30" 
-                            : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}
+                          ${matchesSearch 
+                            ? "bg-blue-100 text-blue-700" 
+                            : isActive 
+                              ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30" 
+                              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}
                           ${isCollapsed ? "justify-center p-3 rounded-xl" : "px-4 py-3 rounded-xl"}
                         `}
                       >
-                        <Icon className={`h-5 w-5 flex-shrink-0 ${isActive ? "text-white" : "text-slate-500 group-hover:text-slate-700"}`} size={22} />
+                        <Icon className={`h-5 w-5 flex-shrink-0 ${matchesSearch ? "text-blue-600" : isActive ? "text-white" : "text-slate-500 group-hover:text-slate-700"}`} size={22} />
                         {!isCollapsed && <span className={`text-sm font-medium ${isActive ? "font-semibold" : ""}`}>{item.name}</span>}
                         {isCollapsed && (
                           <div className="absolute left-full ml-3 px-3 py-2 bg-slate-800 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50 shadow-xl">
@@ -254,7 +351,7 @@ export function ModernSidebar({
             </div>
           </div>
 
-          <div className={`p-2 ${isCollapsed ? '' : ''}`}>
+          <div className="p-2">
             <button
               onClick={onLogout}
               className={`
