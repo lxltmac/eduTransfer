@@ -612,9 +612,9 @@ async function startServer() {
             classId = existingClass.id;
             const oldStudents = db.prepare("SELECT id FROM students WHERE class_id = ?").all(classId) as any[];
             const oldIds = oldStudents.map(s => s.id);
+            
             if (oldIds.length > 0) {
-              db.prepare("UPDATE users SET student_id = NULL WHERE student_id IN (" + oldIds.join(',') + ")").run();
-              db.prepare("DELETE FROM files WHERE student_id IN (" + oldIds.join(',') + ")").run();
+              db.prepare("DELETE FROM files WHERE student_id IN (" + oldIds.map(() => '?').join(',') + ")").run(...oldIds);
             }
             db.prepare("DELETE FROM students WHERE class_id = ?").run(classId);
             db.prepare("DELETE FROM groups WHERE class_id = ?").run(classId);
@@ -639,14 +639,23 @@ async function startServer() {
             const studentDbId = db.prepare("SELECT id FROM students WHERE student_id = ?").get(studentIdCode) as any;
             
             if (s.account) {
-              insertUser.run(
-                s.account,
-                s.password,
-                s.permission === '教师' ? 'teacher' : 'student',
-                s.name,
-                `https://picsum.photos/seed/${s.account}/100/100`,
-                studentDbId?.id || null
-              );
+              const existingUser = db.prepare("SELECT id FROM users WHERE username = ?").get(s.account) as any;
+              if (existingUser) {
+                db.prepare("UPDATE users SET name = ?, avatar = ? WHERE username = ?").run(
+                  s.name,
+                  `https://picsum.photos/seed/${s.account}/100/100`,
+                  s.account
+                );
+              } else {
+                db.prepare("INSERT INTO users (username, password, role, name, avatar, student_id) VALUES (?, ?, ?, ?, ?, ?)").run(
+                  s.account,
+                  s.password,
+                  s.permission === '教师' ? 'teacher' : 'student',
+                  s.name,
+                  `https://picsum.photos/seed/${s.account}/100/100`,
+                  studentDbId?.id || null
+                );
+              }
             }
 
             if (s.groupName && groupMap.has(s.groupName)) {
