@@ -2754,7 +2754,8 @@ function RolesView({ showNotification, showConfirm }: { showNotification: (type:
     { id: 'manage_groups', label: '分组管理' },
     { id: 'manage_users', label: '账号管理' },
     { id: 'manage_roles', label: '角色管理' },
-    { id: 'manage_menu', label: '页面管理' }
+    { id: 'manage_menu', label: '页面管理' },
+    { id: 'manage_settings', label: '系统设置' }
   ];
 
   useEffect(() => {
