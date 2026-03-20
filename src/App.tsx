@@ -1246,7 +1246,7 @@ function ExcelPreview({ url, name }: { url: string; name: string }) {
 
 function FilesView({ files = [], onDelete, onRefresh, user, showConfirm, showNotification }: { files: StudentFile[], onDelete: (id: number) => void, onRefresh: () => void, user: User, showConfirm: (options: { title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' }) => void, showNotification: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void }) {
   const [filter, setFilter] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'icon' | 'list'>('icon');
+  const [viewMode, setViewMode] = useState<'icon' | 'list'>('list');
   const [showUpload, setShowUpload] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<number[]>([]);
@@ -1878,7 +1878,7 @@ function FilesView({ files = [], onDelete, onRefresh, user, showConfirm, showNot
                         <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">名称</th>
                         <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">类型</th>
                         <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">大小</th>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">上传者</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">创建者</th>
                         <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">上传时间</th>
                         <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">操作</th>
                       </tr>

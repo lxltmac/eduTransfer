@@ -847,7 +847,7 @@ async function startServer() {
           LEFT JOIN users u ON f.creator_id = u.id
           WHERE (f.role_ids IS NULL AND f.group_ids IS NULL)
              OR (f.role_ids LIKE '%student%')
-             OR EXISTS (SELECT 1 FROM json_each(f.group_ids) WHERE json_each.value = ?)
+             OR (f.group_ids IS NOT NULL AND EXISTS (SELECT 1 FROM json_each(f.group_ids) WHERE CAST(json_each.value AS INTEGER) = ?))
           ORDER BY f.created_at DESC
         `).all(userGroupId);
       } else {

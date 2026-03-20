@@ -53,7 +53,7 @@ const adminItems: NavigationItem[] = [
   { id: "accounts", name: "账号管理", icon: Users, permission: 'manage_users' },
   { id: "roles", name: "角色管理", icon: ShieldCheck, permission: 'manage_roles' },
   { id: "menu", name: "页面管理", icon: Menu, permission: 'manage_menu' },
-  { id: "settings", name: "系统设置", icon: Settings },
+  { id: "settings", name: "系统设置", icon: Settings, permission: 'manage_settings' },
 ];
 
 const roleLabels: Record<string, string> = {
