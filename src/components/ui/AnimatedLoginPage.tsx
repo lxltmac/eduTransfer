@@ -180,6 +180,7 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
   const [error, setError] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
+  const [charactersCelebrating, setCharactersCelebrating] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [mouseX, setMouseX] = useState<number>(0);
   const [mouseY, setMouseY] = useState<number>(0);
@@ -328,10 +329,13 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
           localStorage.removeItem('edu_username');
           localStorage.removeItem('edu_password');
         }
-        setLoginSuccess(true);
+        setCharactersCelebrating(true);
         setTimeout(() => {
-          onLogin(data.user);
-        }, 800);
+          setLoginSuccess(true);
+          setTimeout(() => {
+            onLogin(data.user);
+          }, 500);
+        }, 600);
       } else {
         setError(data.message || '用户名或密码错误');
         showNotification('error', data.message || '登录失败');
@@ -346,18 +350,6 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
-      {loginSuccess && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-blue-500 animate-fade-in">
-          <div className="text-center text-white">
-            <div className="w-24 h-24 mx-auto mb-6 border-4 border-white rounded-full flex items-center justify-center animate-scale-in">
-              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <p className="text-2xl font-medium animate-slide-up">登录成功</p>
-          </div>
-        </div>
-      )}
       {/* Left Content Section */}
       <div className="relative hidden lg:flex flex-col justify-between bg-gradient-to-br from-blue-600 via-blue-500 to-blue-400 p-12 text-white">
         <div className="relative z-20">
@@ -371,7 +363,7 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
 
         <div className="relative z-20 flex items-end justify-center h-[500px]">
           {/* Cartoon Characters */}
-          <div className="relative" style={{ width: '550px', height: '400px' }}>
+          <div className={`relative ${charactersCelebrating ? 'animate-bounce-hop' : ''}`} style={{ width: '550px', height: '400px' }}>
             {/* Purple tall rectangle character - Back layer */}
             <div 
               ref={purpleRef}
