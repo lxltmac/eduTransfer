@@ -348,7 +348,7 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
       {/* Left Content Section */}
-      <div className="relative hidden lg:flex flex-col justify-between bg-gradient-to-br from-blue-600 via-blue-500 to-blue-400 p-12 text-white">
+      <div className={`relative hidden lg:flex flex-col justify-between bg-gradient-to-br from-blue-600 via-blue-500 to-blue-400 p-12 text-white transition-all duration-300 ${charactersCelebrating ? 'bg-gradient-to-br from-green-600 via-green-500 to-green-400' : ''}`}>
         <div className="relative z-20">
           <div className="flex items-center gap-2 text-lg font-semibold">
             <div className="size-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center">
