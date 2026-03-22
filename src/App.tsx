@@ -5,6 +5,7 @@ import Alert from './components/ui/Alert';
 import MultiSelect from './components/ui/MultiSelect';
 import { AvatarSelect } from './components/ui/AvatarSelect';
 import { ModernSidebar } from './components/ui/ModernSidebar';
+import { AnimatedLoginPage } from './components/ui/AnimatedLoginPage';
 import { 
   AlertTriangle,
   LayoutDashboard, 
@@ -209,7 +210,7 @@ function App() {
   };
 
   if (!user) {
-    return <LoginView onLogin={handleLogin} showNotification={showNotification} />;
+    return <AnimatedLoginPage onLogin={handleLogin} showNotification={showNotification} />;
   }
 
   return (
@@ -262,77 +263,6 @@ function App() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function LoginView({ onLogin, showNotification }: { onLogin: (user: User) => void; showNotification: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void }) {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        onLogin(data.user);
-      } else {
-        showNotification('error', data.message || '登录失败');
-      }
-    } catch (e) {
-      showNotification('error', '网络错误');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <FileCheck size={32} className="text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-800">EduTransfer</h1>
-          <p className="text-slate-500 text-sm mt-1">文件传输系统</p>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">用户名</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 transition-colors"
-              placeholder="请输入用户名"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">密码</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 transition-colors"
-              placeholder="请输入密码"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50"
-          >
-            {loading ? '登录中...' : '登录'}
-          </button>
-        </form>
-      </div>
     </div>
   );
 }
