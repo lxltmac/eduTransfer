@@ -72,3 +72,31 @@
 .markdown-body p {
   @apply mb-4;
 }
+
+/* 登录成功动画 */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.4s ease-out 0.1s forwards;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out 0.3s forwards;
+}

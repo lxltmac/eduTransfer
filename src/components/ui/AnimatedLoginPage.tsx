@@ -178,7 +178,8 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginSuccess, setLoginSuccess] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [mouseX, setMouseX] = useState<number>(0);
   const [mouseY, setMouseY] = useState<number>(0);
@@ -327,7 +328,10 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
           localStorage.removeItem('edu_username');
           localStorage.removeItem('edu_password');
         }
-        onLogin(data.user);
+        setLoginSuccess(true);
+        setTimeout(() => {
+          onLogin(data.user);
+        }, 800);
       } else {
         setError(data.message || '用户名或密码错误');
         showNotification('error', data.message || '登录失败');
@@ -336,12 +340,24 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
       setError('网络错误，请稍后重试');
       showNotification('error', '网络错误');
     } finally {
-      setIsLoading(false);
+      setIsLoggingIn(false);
     }
   };
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
+      {loginSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-blue-500 animate-fade-in">
+          <div className="text-center text-white">
+            <div className="w-24 h-24 mx-auto mb-6 border-4 border-white rounded-full flex items-center justify-center animate-scale-in">
+              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="text-2xl font-medium animate-slide-up">登录成功</p>
+          </div>
+        </div>
+      )}
       {/* Left Content Section */}
       <div className="relative hidden lg:flex flex-col justify-between bg-gradient-to-br from-blue-600 via-blue-500 to-blue-400 p-12 text-white">
         <div className="relative z-20">
@@ -619,9 +635,9 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
               type="submit" 
               className="w-full h-12 text-base font-medium bg-blue-500 hover:bg-blue-600" 
               size="lg" 
-              disabled={isLoading}
+              disabled={isLoggingIn || loginSuccess}
             >
-              {isLoading ? "登录中..." : "登录"}
+              {loginSuccess ? "登录中..." : isLoggingIn ? "登录中..." : "登录"}
             </Button>
           </form>
         </div>
