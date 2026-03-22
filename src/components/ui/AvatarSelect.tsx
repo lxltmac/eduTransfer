@@ -2,22 +2,22 @@ import React, { useState, useRef } from 'react';
 import { Upload, Check, X } from 'lucide-react';
 
 const PRESET_AVATARS = [
-  'https://picsum.photos/seed/admin/200',
-  'https://picsum.photos/seed/user1/200',
-  'https://picsum.photos/seed/user2/200',
-  'https://picsum.photos/seed/user3/200',
-  'https://picsum.photos/seed/user4/200',
-  'https://picsum.photos/seed/user5/200',
-  'https://picsum.photos/seed/user6/200',
-  'https://picsum.photos/seed/user7/200',
-  'https://picsum.photos/seed/user8/200',
-  'https://picsum.photos/seed/user9/200',
-  'https://picsum.photos/seed/user10/200',
-  'https://picsum.photos/seed/user11/200',
-  'https://picsum.photos/seed/user12/200',
-  'https://picsum.photos/seed/user13/200',
-  'https://picsum.photos/seed/user14/200',
-  'https://picsum.photos/seed/user15/200',
+  'https://placehold.co/200x200/4F46E5/ffffff?text=A1',
+  'https://placehold.co/200x200/10B981/ffffff?text=A2',
+  'https://placehold.co/200x200/F59E0B/ffffff?text=A3',
+  'https://placehold.co/200x200/EF4444/ffffff?text=A4',
+  'https://placehold.co/200x200/8B5CF6/ffffff?text=A5',
+  'https://placehold.co/200x200/EC4899/ffffff?text=A6',
+  'https://placehold.co/200x200/06B6D4/ffffff?text=A7',
+  'https://placehold.co/200x200/84CC16/ffffff?text=A8',
+  'https://placehold.co/200x200/F97316/ffffff?text=A9',
+  'https://placehold.co/200x200/6366F1/ffffff?text=B1',
+  'https://placehold.co/200x200/14B8A6/ffffff?text=B2',
+  'https://placehold.co/200x200/EAB308/ffffff?text=B3',
+  'https://placehold.co/200x200/22C55E/ffffff?text=B4',
+  'https://placehold.co/200x200/A855F7/ffffff?text=B5',
+  'https://placehold.co/200x200/F43F5E/ffffff?text=B6',
+  'https://placehold.co/200x200/0EA5E9/ffffff?text=B7',
 ];
 
 interface AvatarSelectProps {
