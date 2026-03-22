@@ -72,8 +72,7 @@ db.exec(`
     avatar TEXT,
     avatar_url TEXT,
     department_ids TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(department_id) REFERENCES departments(id)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS user_roles (
