@@ -2,22 +2,22 @@ import React, { useState, useRef } from 'react';
 import { Upload, Check, X } from 'lucide-react';
 
 const PRESET_AVATARS = [
-  'https://api.dicebear.com/9.x/micah/svg?seed=admin',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user1',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user2',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user3',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user4',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user5',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user6',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user7',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user8',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user9',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user10',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user11',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user12',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user13',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user14',
-  'https://api.dicebear.com/9.x/micah/svg?seed=user15',
+  'https://picsum.photos/seed/admin/200',
+  'https://picsum.photos/seed/user1/200',
+  'https://picsum.photos/seed/user2/200',
+  'https://picsum.photos/seed/user3/200',
+  'https://picsum.photos/seed/user4/200',
+  'https://picsum.photos/seed/user5/200',
+  'https://picsum.photos/seed/user6/200',
+  'https://picsum.photos/seed/user7/200',
+  'https://picsum.photos/seed/user8/200',
+  'https://picsum.photos/seed/user9/200',
+  'https://picsum.photos/seed/user10/200',
+  'https://picsum.photos/seed/user11/200',
+  'https://picsum.photos/seed/user12/200',
+  'https://picsum.photos/seed/user13/200',
+  'https://picsum.photos/seed/user14/200',
+  'https://picsum.photos/seed/user15/200',
 ];
 
 interface AvatarSelectProps {
