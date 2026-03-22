@@ -310,7 +310,7 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setIsLoading(true);
+    setIsLoggingIn(true);
 
     try {
       const res = await fetch('/api/login', {
