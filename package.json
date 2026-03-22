@@ -1,7 +1,8 @@
 {
-  "name": "react-example",
+  "name": "edu-transfer",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "部门文件传输系统",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",

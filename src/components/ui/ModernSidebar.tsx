@@ -5,16 +5,18 @@ import {
   FileCheck,
   Layers,
   ShieldCheck,
-  Menu,
+  Building,
   Settings,
   LogOut,
   ChevronLeft,
   ChevronRight,
   Search,
   LayoutDashboard,
+  Menu,
+  Network,
 } from 'lucide-react';
 
-type Tab = 'dashboard' | 'classes' | 'files' | 'groups' | 'accounts' | 'roles' | 'menu' | 'settings';
+type Tab = 'dashboard' | 'files' | 'departments' | 'groups' | 'accounts' | 'roles' | 'settings' | 'organization';
 
 interface NavigationItem {
   id: Tab;
@@ -29,6 +31,7 @@ interface ModernSidebarProps {
   user: {
     name: string;
     avatar: string;
+    avatar_url?: string;
     role: string;
   };
   onLogout: () => void;
@@ -44,22 +47,22 @@ interface ModernSidebarProps {
 
 const navigationItems: NavigationItem[] = [
   { id: "dashboard", name: "仪表盘", icon: LayoutDashboard, permission: 'view_dashboard' },
-  { id: "classes", name: "班级管理", icon: Users, permission: 'manage_classes' },
-  { id: "files", name: "文件管理", icon: FileCheck, permission: 'manage_files' },
-  { id: "groups", name: "分组管理", icon: Layers, permission: 'manage_groups' },
+  { id: "files", name: "文件传输", icon: FileCheck, permission: 'access_files' },
+  { id: "organization", name: "组织架构", icon: Network },
+  { id: "departments", name: "部门管理", icon: Building, permission: 'manage_departments' },
+  { id: "groups", name: "小组管理", icon: Layers, permission: 'manage_groups' },
 ];
 
 const adminItems: NavigationItem[] = [
   { id: "accounts", name: "账号管理", icon: Users, permission: 'manage_users' },
   { id: "roles", name: "角色管理", icon: ShieldCheck, permission: 'manage_roles' },
-  { id: "menu", name: "页面管理", icon: Menu, permission: 'manage_menu' },
   { id: "settings", name: "系统设置", icon: Settings, permission: 'manage_settings' },
 ];
 
 const roleLabels: Record<string, string> = {
   admin: '系统管理员',
-  teacher: '授课教师',
-  student: '学生',
+  manager: '部门经理',
+  member: '普通成员',
 };
 
 export function ModernSidebar({
@@ -340,7 +343,7 @@ export function ModernSidebar({
           <div className={`border-b border-slate-200/60 ${isCollapsed ? 'p-2' : 'p-4'}`}>
             <div className={`flex items-center rounded-xl transition-colors duration-200 ${isActive => isActive ? 'bg-blue-50' : 'hover:bg-slate-100'} ${isCollapsed ? 'justify-center p-2' : 'p-2.5'}`}>
               <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ring-2 ring-slate-200">
-                <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img src={user.avatar_url || user.avatar} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               </div>
               {!isCollapsed && (
                 <div className="ml-3 flex-1 min-w-0">

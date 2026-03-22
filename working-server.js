@@ -132,6 +132,10 @@ try {
     console.log("[MIGRATION] Adding group_ids to folders table");
     db.exec("ALTER TABLE folders ADD COLUMN group_ids TEXT");
   }
+  if (!foldersColumnNames.includes("creator_id")) {
+    console.log("[MIGRATION] Adding creator_id to folders table");
+    db.exec("ALTER TABLE folders ADD COLUMN creator_id INTEGER");
+  }
   console.log("[MIGRATION] Permission columns added successfully");
 } catch (e) {
   console.log("[MIGRATION] Permission columns already exist or error:", e);
@@ -258,7 +262,7 @@ async function startServer() {
   console.log("[START] Initializing server...");
   console.log("[START] Upload dir:", uploadDir);
   const app = express();
-  const PORT = 3e3;
+  const PORT = Number(process.env.PORT) || 3e3;
   app.use(express.json());
   app.use("/uploads", express.static(uploadDir));
   console.log("[START] Middleware configured");
@@ -513,8 +517,7 @@ async function startServer() {
             const oldStudents = db.prepare("SELECT id FROM students WHERE class_id = ?").all(classId);
             const oldIds = oldStudents.map((s) => s.id);
             if (oldIds.length > 0) {
-              db.prepare("UPDATE users SET student_id = NULL WHERE student_id IN (" + oldIds.join(",") + ")").run();
-              db.prepare("DELETE FROM files WHERE student_id IN (" + oldIds.join(",") + ")").run();
+              db.prepare("DELETE FROM files WHERE student_id IN (" + oldIds.map(() => "?").join(",") + ")").run(...oldIds);
             }
             db.prepare("DELETE FROM students WHERE class_id = ?").run(classId);
             db.prepare("DELETE FROM groups WHERE class_id = ?").run(classId);
@@ -536,14 +539,23 @@ async function startServer() {
             insertStudent.run(s.name, studentIdCode, classId);
             const studentDbId = db.prepare("SELECT id FROM students WHERE student_id = ?").get(studentIdCode);
             if (s.account) {
-              insertUser.run(
-                s.account,
-                s.password,
-                s.permission === "\u6559\u5E08" ? "teacher" : "student",
-                s.name,
-                `https://picsum.photos/seed/${s.account}/100/100`,
-                studentDbId?.id || null
-              );
+              const existingUser = db.prepare("SELECT id FROM users WHERE username = ?").get(s.account);
+              if (existingUser) {
+                db.prepare("UPDATE users SET name = ?, avatar = ? WHERE username = ?").run(
+                  s.name,
+                  `https://picsum.photos/seed/${s.account}/100/100`,
+                  s.account
+                );
+              } else {
+                db.prepare("INSERT INTO users (username, password, role, name, avatar, student_id) VALUES (?, ?, ?, ?, ?, ?)").run(
+                  s.account,
+                  s.password,
+                  s.permission === "\u6559\u5E08" ? "teacher" : "student",
+                  s.name,
+                  `https://picsum.photos/seed/${s.account}/100/100`,
+                  studentDbId?.id || null
+                );
+              }
             }
             if (s.groupName && groupMap.has(s.groupName)) {
               db.prepare("UPDATE students SET group_id = ? WHERE student_id = ?").run(groupMap.get(s.groupName), studentIdCode);
@@ -687,15 +699,22 @@ async function startServer() {
       }
       let folders;
       if (user.role === "admin" || user.role === "teacher") {
-        folders = db.prepare("SELECT * FROM folders ORDER BY created_at DESC").all();
+        folders = db.prepare(`
+          SELECT f.*, u.name as creator_name 
+          FROM folders f 
+          LEFT JOIN users u ON f.creator_id = u.id 
+          ORDER BY f.created_at DESC
+        `).all();
       } else if (user.role === "student" && user.student_id) {
         const student = db.prepare("SELECT group_id FROM students WHERE id = ?").get(user.student_id);
         const userGroupId = student?.group_id || null;
         folders = db.prepare(`
-          SELECT DISTINCT f.* FROM folders f
+          SELECT DISTINCT f.*, u.name as creator_name 
+          FROM folders f 
+          LEFT JOIN users u ON f.creator_id = u.id
           WHERE (f.role_ids IS NULL AND f.group_ids IS NULL)
              OR (f.role_ids LIKE '%student%')
-             OR EXISTS (SELECT 1 FROM json_each(f.group_ids) WHERE json_each.value = ?)
+             OR (f.group_ids IS NOT NULL AND EXISTS (SELECT 1 FROM json_each(f.group_ids) WHERE CAST(json_each.value AS INTEGER) = ?))
           ORDER BY f.created_at DESC
         `).all(userGroupId);
       } else {
@@ -708,18 +727,19 @@ async function startServer() {
     }
   });
   app.post("/api/folders", (req, res) => {
-    const { name, parent_id, role_ids, group_ids } = req.body;
+    const { name, parent_id, role_ids, group_ids, creator_id } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: "\u6587\u4EF6\u5939\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A" });
     }
     try {
       const roleIdsJson = role_ids ? JSON.stringify(role_ids) : null;
       const groupIdsJson = group_ids ? JSON.stringify(group_ids) : null;
-      const result = db.prepare("INSERT INTO folders (name, parent_id, role_ids, group_ids) VALUES (?, ?, ?, ?)").run(
+      const result = db.prepare("INSERT INTO folders (name, parent_id, role_ids, group_ids, creator_id) VALUES (?, ?, ?, ?, ?)").run(
         name.trim(),
         parent_id || null,
         roleIdsJson,
-        groupIdsJson
+        groupIdsJson,
+        creator_id || null
       );
       res.json({ success: true, folderId: result.lastInsertRowid });
     } catch (e) {

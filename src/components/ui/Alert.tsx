@@ -40,22 +40,14 @@ const Alert: React.FC<AlertProps> = ({
   return (
     <motion.div
       className={cn(
-        "border px-4 py-3 flex gap-x-2 items-center rounded-2xl text-sm",
+        "fixed top-6 left-1/2 -translate-x-1/2 z-[9999]",
+        "border px-5 py-3 flex items-center gap-2 rounded-2xl shadow-lg text-base font-medium min-w-[240px] max-w-md justify-center",
         typeStyles[type]
       )}
       role="alert"
       variants={fadeInBlur}
       initial="initial"
       animate="animate"
-      whileHover={{
-        scale: 1.01,
-        rotate: 1,
-        transition: { duration: 0.2, ease: "easeInOut" },
-      }}
-      whileTap={{
-        scale: 0.99,
-        transition: { duration: 0.2, ease: "easeInOut" },
-      }}
       onClick={onClick}
     >
       <span className="font-bold capitalize">{type}:</span>
