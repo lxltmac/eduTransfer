@@ -331,11 +331,8 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
         }
         setCharactersCelebrating(true);
         setTimeout(() => {
-          setLoginSuccess(true);
-          setTimeout(() => {
-            onLogin(data.user);
-          }, 500);
-        }, 600);
+          onLogin(data.user);
+        }, 800);
       } else {
         setError(data.message || '用户名或密码错误');
         showNotification('error', data.message || '登录失败');
@@ -363,11 +360,11 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
 
         <div className="relative z-20 flex items-end justify-center h-[500px]">
           {/* Cartoon Characters */}
-          <div className={`relative ${charactersCelebrating ? 'animate-bounce-hop' : ''}`} style={{ width: '550px', height: '400px' }}>
+          <div className="relative" style={{ width: '550px', height: '400px' }}>
             {/* Purple tall rectangle character - Back layer */}
             <div 
               ref={purpleRef}
-              className="absolute bottom-0 transition-all duration-700 ease-in-out"
+              className={`absolute bottom-0 transition-all duration-700 ease-in-out ${charactersCelebrating ? 'animate-bounce-hop' : ''}`}
               style={{
                 left: '70px',
                 width: '180px',
@@ -417,7 +414,7 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
             {/* Black tall rectangle character - Middle layer */}
             <div 
               ref={blackRef}
-              className="absolute bottom-0 transition-all duration-700 ease-in-out"
+              className={`absolute bottom-0 transition-all duration-700 ease-in-out ${charactersCelebrating ? 'animate-bounce-hop' : ''}`}
               style={{
                 left: '240px',
                 width: '120px',
@@ -469,7 +466,7 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
             {/* Orange semi-circle character - Front left */}
             <div 
               ref={orangeRef}
-              className="absolute bottom-0 transition-all duration-700 ease-in-out"
+              className={`absolute bottom-0 transition-all duration-700 ease-in-out ${charactersCelebrating ? 'animate-bounce-hop' : ''}`}
               style={{
                 left: '0px',
                 width: '240px',
@@ -497,7 +494,7 @@ export function AnimatedLoginPage({ onLogin, showNotification }: AnimatedLoginPa
             {/* Yellow tall rectangle character - Front right */}
             <div 
               ref={yellowRef}
-              className="absolute bottom-0 transition-all duration-700 ease-in-out"
+              className={`absolute bottom-0 transition-all duration-700 ease-in-out ${charactersCelebrating ? 'animate-bounce-hop' : ''}`}
               style={{
                 left: '310px',
                 width: '140px',
