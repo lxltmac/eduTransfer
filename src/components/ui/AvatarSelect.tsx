@@ -2,22 +2,22 @@ import React, { useState, useRef } from 'react';
 import { Upload, Check, X } from 'lucide-react';
 
 const PRESET_AVATARS = [
-  'https://placehold.co/200x200/4F46E5/ffffff?text=A1',
-  'https://placehold.co/200x200/10B981/ffffff?text=A2',
-  'https://placehold.co/200x200/F59E0B/ffffff?text=A3',
-  'https://placehold.co/200x200/EF4444/ffffff?text=A4',
-  'https://placehold.co/200x200/8B5CF6/ffffff?text=A5',
-  'https://placehold.co/200x200/EC4899/ffffff?text=A6',
-  'https://placehold.co/200x200/06B6D4/ffffff?text=A7',
-  'https://placehold.co/200x200/84CC16/ffffff?text=A8',
-  'https://placehold.co/200x200/F97316/ffffff?text=A9',
-  'https://placehold.co/200x200/6366F1/ffffff?text=B1',
-  'https://placehold.co/200x200/14B8A6/ffffff?text=B2',
-  'https://placehold.co/200x200/EAB308/ffffff?text=B3',
-  'https://placehold.co/200x200/22C55E/ffffff?text=B4',
-  'https://placehold.co/200x200/A855F7/ffffff?text=B5',
-  'https://placehold.co/200x200/F43F5E/ffffff?text=B6',
-  'https://placehold.co/200x200/0EA5E9/ffffff?text=B7',
+  'https://picsum.photos/seed/xili1/100/100',
+  'https://picsum.photos/seed/xili2/100/100',
+  'https://picsum.photos/seed/xili3/100/100',
+  'https://picsum.photos/seed/xili4/100/100',
+  'https://picsum.photos/seed/xili5/100/100',
+  'https://picsum.photos/seed/xili6/100/100',
+  'https://picsum.photos/seed/xili7/100/100',
+  'https://picsum.photos/seed/xili8/100/100',
+  'https://picsum.photos/seed/xili9/100/100',
+  'https://picsum.photos/seed/xili10/100/100',
+  'https://picsum.photos/seed/xili11/100/100',
+  'https://picsum.photos/seed/xili12/100/100',
+  'https://picsum.photos/seed/xili13/100/100',
+  'https://picsum.photos/seed/xili14/100/100',
+  'https://picsum.photos/seed/xili15/100/100',
+  'https://picsum.photos/seed/xili16/100/100',
 ];
 
 interface AvatarSelectProps {
@@ -91,6 +91,9 @@ export function AvatarSelect({ value, onChange, label = '头像' }: AvatarSelect
             src={displayAvatar}
             alt="Selected avatar"
             className="w-24 h-24 rounded-full object-cover border-4 border-slate-200 shadow-lg"
+            onError={(e) => {
+              e.currentTarget.src = 'https://picsum.photos/seed/default/100/100';
+            }}
           />
           {customAvatar && (
             <button
