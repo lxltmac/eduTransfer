@@ -2,22 +2,22 @@ import React, { useState, useRef } from 'react';
 import { Upload, Check, X } from 'lucide-react';
 
 const PRESET_AVATARS = [
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=admin',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user1',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user2',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user3',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user4',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user5',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user6',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user7',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user8',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user9',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user10',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user11',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user12',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user13',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user14',
-  'https://api.dicebear.com/9.x/lorelei/svg?seed=user15',
+  'https://api.dicebear.com/9.x/micah/svg?seed=admin',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user1',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user2',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user3',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user4',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user5',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user6',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user7',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user8',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user9',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user10',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user11',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user12',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user13',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user14',
+  'https://api.dicebear.com/9.x/micah/svg?seed=user15',
 ];
 
 interface AvatarSelectProps {
