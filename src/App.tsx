@@ -814,6 +814,26 @@ function FilesView({ user, showConfirm, showNotification }: { user: User; showCo
               <>
                 <button onClick={() => setShowMoveModal(true)} className="text-xs bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-200">移动文件</button>
                 <button onClick={handleBatchDeleteFiles} className="text-xs bg-rose-100 text-rose-600 px-3 py-1.5 rounded-lg hover:bg-rose-200">删除文件</button>
+                <button 
+                  onClick={() => {
+                    selectedFiles.forEach(fileId => {
+                      const file = files.find(f => f.id === fileId);
+                      if (file) {
+                        const link = document.createElement('a');
+                        link.href = file.file_url;
+                        link.download = file.name;
+                        link.target = '_blank';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }
+                    });
+                    showNotification('success', '开始下载文件');
+                  }} 
+                  className="text-xs bg-green-100 text-green-600 px-3 py-1.5 rounded-lg hover:bg-green-200"
+                >
+                  批量下载
+                </button>
               </>
             )}
             {selectedFolders.length > 0 && (
