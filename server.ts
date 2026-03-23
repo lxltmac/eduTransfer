@@ -12,7 +12,12 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3100;
 
-// Data directory (use persistent disk on Render)
+if (process.env.DATABASE_URL) {
+  console.error("[ERROR] PostgreSQL not configured. This codebase uses SQLite synchronously.");
+  console.error("[HINT] For free PostgreSQL: Use Neon (https://neon.tech) - requires async refactor.");
+  console.error("[ALT] For free persistent SQLite: Use Railway paid plan or Coolify.");
+}
+
 const dataDir = process.env.DATA_DIR || __dirname;
 const dbPath = process.env.DB_PATH || path.join(dataDir, "edu_transfer.db");
 
