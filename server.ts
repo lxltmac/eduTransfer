@@ -282,6 +282,8 @@ app.post("/api/login", (req, res) => {
     
     if (userRoles.some(r => r.name === 'admin')) {
       user.effective_role = 'admin';
+    } else if (userRoles.some(r => r.name === 'manager')) {
+      user.effective_role = 'manager';
     } else {
       user.effective_role = user.role;
     }
@@ -311,6 +313,60 @@ app.post("/api/login", (req, res) => {
   }
 });
 
+function isDeptManager(user: any, targetUserId: number, db: any): boolean {
+  if (user.effective_role !== 'manager') return false;
+  if (!targetUserId) {
+    // 如果目标没有 owner，检查文件/文件夹的 department_ids 是否属于该经理
+    return false;
+  }
+  const targetUser = db.prepare("SELECT department_ids FROM users WHERE id = ?").get(targetUserId) as any;
+  if (!targetUser || !targetUser.department_ids) return false;
+  const targetDepts = JSON.parse(targetUser.department_ids) as number[];
+  const managerDepts = user.department_ids as number[];
+  return targetDepts.some((d: number) => managerDepts.includes(d));
+}
+
+// 检查用户是否管理某个部门（通过文件夹/文件的 department_ids）
+function isManagerOfDepartment(user: any, resource: any, db: any): boolean {
+  try {
+    if (user.effective_role !== 'manager') return false;
+    if (!user.department_ids || user.department_ids.length === 0) return false;
+    
+    const managerDepts = Array.isArray(user.department_ids) ? user.department_ids : JSON.parse(user.department_ids || "[]");
+    if (!Array.isArray(managerDepts) || managerDepts.length === 0) return false;
+    
+    const managerDeptNums = managerDepts.map((d: any) => Number(d));
+    
+    if (resource.department_ids) {
+      const resourceDepts = JSON.parse(resource.department_ids);
+      if (Array.isArray(resourceDepts)) {
+        const resourceDeptNums = resourceDepts.map((d: any) => Number(d));
+        if (resourceDeptNums.some((d: number) => managerDeptNums.includes(d))) {
+          return true;
+        }
+      }
+    }
+    
+    if (resource.owner_id) {
+      const owner = db.prepare("SELECT department_ids FROM users WHERE id = ?").get(resource.owner_id) as any;
+      if (owner && owner.department_ids) {
+        const ownerDepts = JSON.parse(owner.department_ids);
+        if (Array.isArray(ownerDepts)) {
+          const ownerDeptNums = ownerDepts.map((d: any) => Number(d));
+          if (ownerDeptNums.some((d: number) => managerDeptNums.includes(d))) {
+            return true;
+          }
+        }
+      }
+    }
+    
+    return false;
+  } catch (e: any) {
+    console.log("[ERROR] isManagerOfDepartment:", e.message);
+    return false;
+  }
+}
+
 app.post("/api/folders/move", (req, res) => {
   try {
     const { folderIds, targetId, userId } = req.body;
@@ -321,12 +377,25 @@ app.post("/api/folders/move", (req, res) => {
       return res.status(401).json({ success: false, message: "未授权" });
     }
     const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
-    const isAdmin = user.effective_role === "admin" || user.permissions?.includes("manage_folders");
+    const effectiveRole = user.role;
+    const userDepts = user.department_ids ? JSON.parse(user.department_ids) : [];
+    
+    const isAdmin = effectiveRole === "admin";
+    
     for (const folderId of folderIds) {
       const folder = db.prepare("SELECT * FROM folders WHERE id = ?").get(folderId) as any;
       if (!folder) continue;
       const isOwner = folder.owner_id === parseInt(userId);
-      if (!isAdmin && !isOwner) {
+      
+      let isDeptMgr = false;
+      if (effectiveRole === 'manager' && userDepts.length > 0 && folder.department_ids) {
+        const folderDepts = JSON.parse(folder.department_ids);
+        const folderDeptNums = folderDepts.map((d: any) => Number(d));
+        const userDeptNums = userDepts.map((d: any) => Number(d));
+        isDeptMgr = folderDeptNums.some((d: number) => userDeptNums.includes(d));
+      }
+      
+      if (!isAdmin && !isOwner && !isDeptMgr) {
         return res.status(403).json({ success: false, message: "无权限移动此文件夹" });
       }
     }
@@ -350,21 +419,32 @@ app.delete("/api/folders/:id", (req, res) => {
     const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
     const folder = db.prepare("SELECT * FROM folders WHERE id = ?").get(req.params.id) as any;
     
+    const effectiveRole = user.role;
+    const userDepts = user.department_ids ? JSON.parse(user.department_ids) : [];
+    
     if (!folder) {
       return res.status(404).json({ success: false, message: "文件夹不存在" });
     }
     
-    const isAdmin = user.effective_role === "admin" || user.permissions?.includes("manage_folders");
+    const isAdmin = effectiveRole === "admin";
     const isOwner = folder.owner_id === parseInt(userId as string);
     
-    if (!isAdmin && !isOwner) {
+    let isDeptMgr = false;
+    if (effectiveRole === 'manager' && userDepts.length > 0 && folder.department_ids) {
+      const folderDepts = JSON.parse(folder.department_ids);
+      const folderDeptNums = folderDepts.map((d: any) => Number(d));
+      const userDeptNums = userDepts.map((d: any) => Number(d));
+      isDeptMgr = folderDeptNums.some((d: number) => userDeptNums.includes(d));
+    }
+    
+    if (!isAdmin && !isOwner && !isDeptMgr) {
       return res.status(403).json({ success: false, message: "无权限删除此文件夹" });
     }
     
-    db.prepare("DELETE FROM folders WHERE id = ?").run(req.params.id);
     db.prepare("DELETE FROM files WHERE folder_id = ?").run(req.params.id);
+    db.prepare("DELETE FROM folders WHERE id = ?").run(req.params.id);
     res.json({ success: true });
-  } catch (e) {
+  } catch (e: any) {
     res.status(500).json({ success: false, message: "删除文件夹失败" });
   }
 });
@@ -445,14 +525,36 @@ app.post("/api/files/move", (req, res) => {
     if (!file) {
       return res.status(404).json({ success: false, message: "文件不存在" });
     }
-    const isAdmin = user.effective_role === "admin" || user.permissions?.includes("manage_files");
+    
+    const effectiveRole = user.role;
+    const userDepts = user.department_ids ? JSON.parse(user.department_ids) : [];
+    
+    const isAdmin = effectiveRole === "admin";
     const isOwner = file.uploader_id === parseInt(userId);
-    if (!isAdmin && !isOwner) {
+    
+    let isDeptMgr = false;
+    if (effectiveRole === 'manager' && userDepts.length > 0) {
+      if (file.department_ids) {
+        const fileDepts = JSON.parse(file.department_ids);
+        const fileDeptNums = fileDepts.map((d: any) => Number(d));
+        const userDeptNums = userDepts.map((d: any) => Number(d));
+        isDeptMgr = fileDeptNums.some((d: number) => userDeptNums.includes(d));
+      } else if (file.uploader_id) {
+        const owner = db.prepare("SELECT department_ids FROM users WHERE id = ?").get(file.uploader_id) as any;
+        if (owner && owner.department_ids) {
+          const ownerDepts = JSON.parse(owner.department_ids);
+          const ownerDeptNums = ownerDepts.map((d: any) => Number(d));
+          const userDeptNums = userDepts.map((d: any) => Number(d));
+          isDeptMgr = ownerDeptNums.some((d: number) => userDeptNums.includes(d));
+        }
+      }
+    }
+    
+    if (!isAdmin && !isOwner && !isDeptMgr) {
       return res.status(403).json({ success: false, message: "无权限移动此文件" });
     }
     
-    // 普通用户只能移动文件到自己的文件夹
-    if (!isAdmin && folderId) {
+    if (!isAdmin && !isDeptMgr && folderId) {
       const targetFolder = db.prepare("SELECT * FROM folders WHERE id = ?").get(folderId) as any;
       if (targetFolder && targetFolder.owner_id !== parseInt(userId)) {
         return res.status(403).json({ success: false, message: "只能移动文件到自己的文件夹" });
@@ -553,10 +655,35 @@ app.get("/api/groups", (req, res) => {
 
 app.post("/api/groups", (req, res) => {
   const { name, department_id } = req.body;
+  const { userId } = req.query;
+  
   if (!name?.trim()) {
     return res.status(400).json({ success: false, message: "小组名称不能为空" });
   }
+  
+  if (!userId) {
+    return res.status(401).json({ success: false, message: "未授权" });
+  }
+  
   try {
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
+    
+    const userRoles = db.prepare("SELECT r.name FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = ?").all(userId) as any[];
+    const roleNames = userRoles.map((r: any) => r.name);
+    const effectiveRole = roleNames.includes('admin') ? 'admin' : roleNames.includes('manager') ? 'manager' : user.role;
+    
+    const isAdmin = user.role === "admin" || effectiveRole === "admin";
+    
+    let isDeptManager = false;
+    if ((user.role === "manager" || effectiveRole === "manager") && user.department_ids && department_id) {
+      const userDepts = JSON.parse(user.department_ids);
+      isDeptManager = userDepts.includes(department_id);
+    }
+    
+    if (!isAdmin && !isDeptManager) {
+      return res.status(403).json({ success: false, message: "无权限创建小组" });
+    }
+    
     const result = db.prepare("INSERT INTO groups (name, department_id) VALUES (?, ?)").run(name, department_id || null);
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (e) {
@@ -566,7 +693,35 @@ app.post("/api/groups", (req, res) => {
 
 app.put("/api/groups/:id", (req, res) => {
   const { name, department_id } = req.body;
+  const { userId } = req.query;
+  
+  if (!userId) {
+    return res.status(401).json({ success: false, message: "未授权" });
+  }
+  
   try {
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
+    const group = db.prepare("SELECT * FROM groups WHERE id = ?").get(req.params.id) as any;
+    
+    if (!group) {
+      return res.status(404).json({ success: false, message: "小组不存在" });
+    }
+    
+    const userRoles = db.prepare("SELECT r.name FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = ?").all(userId) as any[];
+    const roleNames = userRoles.map((r: any) => r.name);
+    const effectiveRole = roleNames.includes('admin') ? 'admin' : roleNames.includes('manager') ? 'manager' : user.role;
+    
+    const isAdmin = user.role === "admin" || effectiveRole === "admin";
+    let isDeptManager = false;
+    if ((user.role === "manager" || effectiveRole === "manager") && user.department_ids && group.department_id) {
+      const userDepts = JSON.parse(user.department_ids);
+      isDeptManager = userDepts.includes(group.department_id);
+    }
+    
+    if (!isAdmin && !isDeptManager) {
+      return res.status(403).json({ success: false, message: "无权限编辑此小组" });
+    }
+    
     db.prepare("UPDATE groups SET name = ?, department_id = ? WHERE id = ?").run(name, department_id || null, req.params.id);
     res.json({ success: true });
   } catch (e) {
@@ -575,7 +730,31 @@ app.put("/api/groups/:id", (req, res) => {
 });
 
 app.delete("/api/groups/:id", (req, res) => {
+  const { userId } = req.query;
+  
+  if (!userId) {
+    return res.status(401).json({ success: false, message: "未授权" });
+  }
+  
   try {
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
+    const group = db.prepare("SELECT * FROM groups WHERE id = ?").get(req.params.id) as any;
+    
+    if (!group) {
+      return res.status(404).json({ success: false, message: "小组不存在" });
+    }
+    
+    const isAdmin = user.role === "admin" || user.effective_role === "admin";
+    let isDeptManager = false;
+    if ((user.role === "manager" || user.effective_role === "manager") && user.department_ids && group.department_id) {
+      const userDepts = JSON.parse(user.department_ids);
+      isDeptManager = userDepts.includes(group.department_id);
+    }
+    
+    if (!isAdmin && !isDeptManager) {
+      return res.status(403).json({ success: false, message: "无权限删除此小组" });
+    }
+    
     db.prepare("DELETE FROM user_groups WHERE group_id = ?").run(req.params.id);
     db.prepare("DELETE FROM groups WHERE id = ?").run(req.params.id);
     res.json({ success: true });
@@ -600,7 +779,40 @@ app.get("/api/groups/:id/users", (req, res) => {
 
 app.put("/api/groups/:id/members", (req, res) => {
   const { user_ids } = req.body;
+  const { userId } = req.query;
+  
+  if (!userId) {
+    return res.status(401).json({ success: false, message: "未授权" });
+  }
+  
   try {
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
+    const group = db.prepare("SELECT * FROM groups WHERE id = ?").get(req.params.id) as any;
+    
+    // 获取用户的实际角色
+    const userRoles = db.prepare("SELECT r.name FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = ?").all(userId) as any[];
+    const roleNames = userRoles.map((r: any) => r.name);
+    const effectiveRole = roleNames.includes('admin') ? 'admin' : roleNames.includes('manager') ? 'manager' : user.role;
+    
+    if (!group) {
+      return res.status(404).json({ success: false, message: "小组不存在" });
+    }
+    
+    const isAdmin = user.role === "admin" || effectiveRole === "admin";
+    let isDeptManager = false;
+    if ((user.role === "manager" || effectiveRole === "manager") && user.department_ids && group.department_id) {
+      const userDepts = JSON.parse(user.department_ids);
+      isDeptManager = userDepts.includes(group.department_id);
+    }
+    
+    if (!isAdmin && !isDeptManager) {
+      return res.status(403).json({ success: false, message: "无权限管理此小组" });
+    }
+    
+    if (!isAdmin && !isDeptManager) {
+      return res.status(403).json({ success: false, message: "无权限管理此小组" });
+    }
+    
     db.prepare("DELETE FROM user_groups WHERE group_id = ?").run(req.params.id);
     if (user_ids && user_ids.length > 0) {
       const insert = db.prepare("INSERT INTO user_groups (user_id, group_id) VALUES (?, ?)");
@@ -726,7 +938,7 @@ app.post("/api/users", (req, res) => {
     return res.status(400).json({ success: false, message: "用户名、密码和姓名不能为空" });
   }
   try {
-    const avatarUrl = avatar_url || avatar || `https://picsum.photos/seed/${username}/100/100`;
+    const avatarUrl = avatar_url || avatar || `/avatars/${username}.jpg`;
     const deptIds = department_ids ? JSON.stringify(department_ids) : null;
     
     const result = db.prepare(
@@ -1005,11 +1217,25 @@ app.put("/api/folders/:id", (req, res) => {
       return res.status(404).json({ success: false, message: "文件夹不存在" });
     }
     
-    // Check effective_role for admin status
-    const isAdmin = user.effective_role === "admin" || user.permissions?.includes("manage_folders");
+    // Check role for admin status
+    const isAdmin = user.role === "admin";
     const isOwner = folder.owner_id === parseInt(userId as string);
     
-    if (!isAdmin && !isOwner) {
+    // 部门经理检查：需要是同部门
+    let isDeptManager = false;
+    if (user.role === "manager" && user.department_ids) {
+      const userDepts = JSON.parse(user.department_ids);
+      if (folder.department_ids) {
+        const folderDepts = JSON.parse(folder.department_ids);
+        // 部门经理可以管理同部门的文件夹
+        isDeptManager = folderDepts.some((d: number) => userDepts.includes(d));
+      } else {
+        // 如果文件夹没有设置部门，部门经理可以管理（默认同部门可见）
+        isDeptManager = true;
+      }
+    }
+    
+    if (!isAdmin && !isOwner && !isDeptManager) {
       return res.status(403).json({ success: false, message: "无权限编辑此文件夹" });
     }
     
@@ -1064,16 +1290,37 @@ app.delete("/api/files/:id", (req, res) => {
     }
     
     const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
-    const file = db.prepare("SELECT file_url, uploader_id FROM files WHERE id = ?").get(req.params.id) as any;
+    const file = db.prepare("SELECT file_url, uploader_id, department_ids FROM files WHERE id = ?").get(req.params.id) as any;
     
     if (!file) {
       return res.status(404).json({ success: false, message: "文件不存在" });
     }
     
-    const isAdmin = user.effective_role === "admin" || user.permissions?.includes("manage_files");
+    const effectiveRole = user.role;
+    const userDepts = user.department_ids ? JSON.parse(user.department_ids) : [];
+    
+    const isAdmin = effectiveRole === "admin";
     const isOwner = file.uploader_id === parseInt(userId as string);
     
-    if (!isAdmin && !isOwner) {
+    let isDeptMgr = false;
+    if (effectiveRole === 'manager' && userDepts.length > 0) {
+      if (file.department_ids) {
+        const fileDepts = JSON.parse(file.department_ids);
+        const fileDeptNums = fileDepts.map((d: any) => Number(d));
+        const userDeptNums = userDepts.map((d: any) => Number(d));
+        isDeptMgr = fileDeptNums.some((d: number) => userDeptNums.includes(d));
+      } else if (file.uploader_id) {
+        const owner = db.prepare("SELECT department_ids FROM users WHERE id = ?").get(file.uploader_id) as any;
+        if (owner && owner.department_ids) {
+          const ownerDepts = JSON.parse(owner.department_ids);
+          const ownerDeptNums = ownerDepts.map((d: any) => Number(d));
+          const userDeptNums = userDepts.map((d: any) => Number(d));
+          isDeptMgr = ownerDeptNums.some((d: number) => userDeptNums.includes(d));
+        }
+      }
+    }
+    
+    if (!isAdmin && !isOwner && !isDeptMgr) {
       return res.status(403).json({ success: false, message: "无权限删除此文件" });
     }
     
@@ -1085,7 +1332,7 @@ app.delete("/api/files/:id", (req, res) => {
     }
     db.prepare("DELETE FROM files WHERE id = ?").run(req.params.id);
     res.json({ success: true });
-  } catch (e) {
+  } catch (e: any) {
     res.status(500).json({ success: false, message: "删除文件失败" });
   }
 });
@@ -1113,6 +1360,15 @@ function getFileType(filename: string): string {
     return "text";
   if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return "archive";
   return "other";
+}
+
+// Serve static frontend files in production
+const distPath = path.join(__dirname, "dist");
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(distPath, "index.html"));
+  });
 }
 
 app.listen(PORT, () => {

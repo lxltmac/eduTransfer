@@ -2,22 +2,22 @@ import React, { useState, useRef } from 'react';
 import { Upload, Check, X } from 'lucide-react';
 
 const PRESET_AVATARS = [
-  'https://picsum.photos/seed/xili1/100/100',
-  'https://picsum.photos/seed/xili2/100/100',
-  'https://picsum.photos/seed/xili3/100/100',
-  'https://picsum.photos/seed/xili4/100/100',
-  'https://picsum.photos/seed/xili5/100/100',
-  'https://picsum.photos/seed/xili6/100/100',
-  'https://picsum.photos/seed/xili7/100/100',
-  'https://picsum.photos/seed/xili8/100/100',
-  'https://picsum.photos/seed/xili9/100/100',
-  'https://picsum.photos/seed/xili10/100/100',
-  'https://picsum.photos/seed/xili11/100/100',
-  'https://picsum.photos/seed/xili12/100/100',
-  'https://picsum.photos/seed/xili13/100/100',
-  'https://picsum.photos/seed/xili14/100/100',
-  'https://picsum.photos/seed/xili15/100/100',
-  'https://picsum.photos/seed/xili16/100/100',
+  '/avatars/xili1.jpg',
+  '/avatars/xili2.jpg',
+  '/avatars/xili3.jpg',
+  '/avatars/xili4.jpg',
+  '/avatars/xili5.jpg',
+  '/avatars/xili6.jpg',
+  '/avatars/xili7.jpg',
+  '/avatars/xili8.jpg',
+  '/avatars/xili9.jpg',
+  '/avatars/xili10.jpg',
+  '/avatars/xili11.jpg',
+  '/avatars/xili12.jpg',
+  '/avatars/xili13.jpg',
+  '/avatars/xili14.jpg',
+  '/avatars/xili15.jpg',
+  '/avatars/xili16.jpg',
 ];
 
 interface AvatarSelectProps {
@@ -92,7 +92,7 @@ export function AvatarSelect({ value, onChange, label = '头像' }: AvatarSelect
             alt="Selected avatar"
             className="w-24 h-24 rounded-full object-cover border-4 border-slate-200 shadow-lg"
             onError={(e) => {
-              e.currentTarget.src = 'https://picsum.photos/seed/default/100/100';
+              e.currentTarget.src = '/avatars/default.jpg';
             }}
           />
           {customAvatar && (

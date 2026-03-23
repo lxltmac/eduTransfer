@@ -348,7 +348,7 @@ export function ModernSidebar({
               {!isCollapsed && (
                 <div className="ml-3 flex-1 min-w-0">
                   <p className="text-sm font-semibold text-slate-800 truncate">{user.name}</p>
-                  <p className="text-xs text-slate-500 truncate">{roleLabels[user.role] || user.role}</p>
+                  <p className="text-xs text-slate-500 truncate">{roleLabels[user.effective_role || user.role] || user.effective_role || user.role}</p>
                 </div>
               )}
             </div>

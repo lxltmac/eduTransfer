@@ -110,7 +110,43 @@ type Tab = 'dashboard' | 'files' | 'departments' | 'groups' | 'accounts' | 'role
 
 function canManage(user: User | null): boolean {
   if (!user) return false;
-  return user.effective_role === "admin" || user.permissions?.includes("manage_folders") || user.permissions?.includes("manage_files") || user.permissions?.includes("manage_users");
+  return user.effective_role === "admin" || user.role === "manager" || user.permissions?.includes("manage_folders") || user.permissions?.includes("manage_files") || user.permissions?.includes("manage_users");
+}
+
+function canManageFolder(user: User | null, folder: Folder | null): boolean {
+  if (!user || !folder) return false;
+  if (user.effective_role === "admin") return true;
+  // 部门经理可以管理同部门任何人创建的文件夹
+  if (user.role === "manager" && user.department_ids?.length) {
+    const folderOwner = folder.owner_id;
+    if (folderOwner) {
+      // 需要检查文件夹创建者是否在同一部门，这里简化处理：部门经理可以管理所有同部门文件夹
+      return true;
+    }
+  }
+  return user.permissions?.includes("manage_folders") || user.permissions?.includes("manage_files") || user.permissions?.includes("manage_users");
+}
+
+function canDeleteFolder(user: User | null, folder: Folder | null): boolean {
+  if (!user || !folder) return false;
+  if (user.effective_role === "admin") return true;
+  // 部门经理可以删除同部门任何人创建的文件夹
+  if (user.role === "manager" && user.department_ids?.length) {
+    return true;
+  }
+  return false;
+}
+
+function getManageableGroups(user: User | null, allGroups: any[]): any[] {
+  if (!user || !user.department_ids || user.department_ids.length === 0) return allGroups;
+  if (user.effective_role === "admin") return allGroups;
+  return allGroups.filter(g => g.department_id && user.department_ids.includes(g.department_id));
+}
+
+function getManageableDepartments(user: User | null, allDepartments: any[]): any[] {
+  if (!user || !user.department_ids || user.department_ids.length === 0) return allDepartments;
+  if (user.effective_role === "admin") return allDepartments;
+  return allDepartments.filter(d => user.department_ids.includes(d.id));
 }
 
 function App() {
@@ -530,7 +566,12 @@ function FilesView({ user, showConfirm, showNotification }: { user: User; showCo
       message: '确定要删除该文件夹吗？',
       type: 'danger',
       onConfirm: async () => {
-        await fetch(`/api/folders/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/folders/${id}?userId=${user?.id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          showNotification('error', data.message || '删除失败');
+          return;
+        }
         showNotification('success', '文件夹已删除');
         fetchFolders();
       }
@@ -543,9 +584,12 @@ function FilesView({ user, showConfirm, showNotification }: { user: User; showCo
       fetch('/api/groups'),
       fetch('/api/departments')
     ]);
-    setRoles(await rolesRes.json());
-    setGroups(await groupsRes.json());
-    setDepartments(await deptsRes.json());
+    const rolesData = await rolesRes.json();
+    const groupsData = await groupsRes.json();
+    const deptsData = await deptsRes.json();
+    setRoles(rolesData);
+    setGroups(groupsData);
+    setDepartments(deptsData);
     setEditingFolder(folder);
     setEditName(folder.name);
     setFolderPermissions({
@@ -559,7 +603,8 @@ function FilesView({ user, showConfirm, showNotification }: { user: User; showCo
 
   const handleSaveFolderPermissions = async () => {
     if (!editingFolder) return;
-    await fetch(`/api/folders/${editingFolder.id}`, {
+    console.log('Saving folder permissions:', { folderId: editingFolder.id, userId: user?.id, folderPermissions });
+    const res = await fetch(`/api/folders/${editingFolder.id}?userId=${user?.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -570,6 +615,11 @@ function FilesView({ user, showConfirm, showNotification }: { user: User; showCo
         is_public: folderPermissions.is_public
       })
     });
+    const data = await res.json();
+    if (!res.ok) {
+      showNotification('error', data.message || '保存失败');
+      return;
+    }
     setShowFolderSettings(false);
     setEditingFolder(null);
     fetchFolders();
@@ -594,7 +644,12 @@ function FilesView({ user, showConfirm, showNotification }: { user: User; showCo
       type: 'danger',
       onConfirm: async () => {
         for (const id of selectedFiles) {
-          await fetch(`/api/files/${id}`, { method: 'DELETE' });
+          const res = await fetch(`/api/files/${id}?userId=${user?.id}`, { method: 'DELETE' });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            showNotification('error', data.message || '删除失败');
+            return;
+          }
         }
         setSelectedFiles([]);
         setShowBatchActions(false);
@@ -611,7 +666,12 @@ function FilesView({ user, showConfirm, showNotification }: { user: User; showCo
       type: 'danger',
       onConfirm: async () => {
         for (const id of selectedFolders) {
-          await fetch(`/api/folders/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/folders/${id}?userId=${user?.id}`, { method: 'DELETE' });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            showNotification('error', data.message || '删除失败');
+            return;
+          }
         }
         setSelectedFolders([]);
         fetchFolders();
@@ -948,7 +1008,7 @@ function FilesView({ user, showConfirm, showNotification }: { user: User; showCo
                           <a href={file.file_url} download onClick={(e) => e.stopPropagation()} className="p-1 bg-white rounded shadow hover:bg-slate-50">
                             <Download size={14} className="text-slate-600" />
                           </a>
-                          <button onClick={(e) => { e.stopPropagation(); showConfirm({ title: '删除文件', message: '确定要删除这个文件吗？', type: 'danger', onConfirm: async () => { await fetch(`/api/files/${file.id}`, { method: 'DELETE' }); fetchFiles(parentId); showNotification('success', '文件已删除'); }}); }} className="p-1 bg-white rounded shadow hover:bg-slate-50">
+                          <button onClick={(e) => { e.stopPropagation(); showConfirm({ title: '删除文件', message: '确定要删除这个文件吗？', type: 'danger', onConfirm: async () => { const res = await fetch(`/api/files/${file.id}?userId=${user?.id}`, { method: 'DELETE' }); if (!res.ok) { const data = await res.json().catch(() => ({})); showNotification('error', data.message || '删除失败'); return; } fetchFiles(parentId); showNotification('success', '文件已删除'); }}); }} className="p-1 bg-white rounded shadow hover:bg-slate-50">
                             <Trash size={14} className="text-slate-600" />
                           </button>
                         </div>
@@ -1021,12 +1081,12 @@ function FilesView({ user, showConfirm, showNotification }: { user: User; showCo
                       <td className="py-3 px-4 text-sm text-slate-500 cursor-pointer" onClick={() => { setParentId(folder.id); setCurrentPage(1); }}>{new Date(folder.created_at).toLocaleString()}</td>
                       <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex gap-2">
-                          {canManage(user) && (
+                          {canManageFolder(user, folder) && (
                             <button onClick={() => handleOpenFolderSettings(folder)} className="text-slate-400 hover:text-blue-500" title="权限设置">
                               <ShieldCheck size={14} />
                             </button>
                           )}
-                          {canManage(user) && (
+                          {canDeleteFolder(user, folder) && (
                             <button onClick={() => handleDeleteFolder(folder.id)} className="text-slate-400 hover:text-red-500">
                               <Trash size={14} />
                             </button>
@@ -1069,7 +1129,7 @@ function FilesView({ user, showConfirm, showNotification }: { user: User; showCo
                             <Download size={14} />
                           </a>
                           {canManage(user) && (
-                            <button onClick={() => showConfirm({ title: '删除文件', message: '确定要删除这个文件吗？', type: 'danger', onConfirm: async () => { await fetch(`/api/files/${file.id}`, { method: 'DELETE' }); fetchFiles(parentId); showNotification('success', '文件已删除'); }})} className="text-slate-400 hover:text-red-500">
+                            <button onClick={() => showConfirm({ title: '删除文件', message: '确定要删除这个文件吗？', type: 'danger', onConfirm: async () => { const res = await fetch(`/api/files/${file.id}?userId=${user?.id}`, { method: 'DELETE' }); if (!res.ok) { const data = await res.json().catch(() => ({})); showNotification('error', data.message || '删除失败'); return; } fetchFiles(parentId); showNotification('success', '文件已删除'); }})} className="text-slate-400 hover:text-red-500">
                               <Trash size={14} />
                             </button>
                           )}
@@ -1407,7 +1467,7 @@ function FilesView({ user, showConfirm, showNotification }: { user: User; showCo
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase mb-2">可见部门</label>
                 <MultiSelect
-                  options={departments.map(d => ({ id: String(d.id), name: d.name }))}
+                  options={getManageableDepartments(user, departments).map(d => ({ id: String(d.id), name: d.name }))}
                   selected={folderPermissions.department_ids}
                   onChange={canManage(user) ? (selected) => setFolderPermissions(prev => ({ ...prev, department_ids: selected })) : undefined}
                   disabled={!canManage(user)}
@@ -1418,7 +1478,7 @@ function FilesView({ user, showConfirm, showNotification }: { user: User; showCo
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase mb-2">可见小组</label>
                 <MultiSelect
-                  options={groups.map(g => ({ id: String(g.id), name: g.name }))}
+                  options={getManageableGroups(user, groups).map(g => ({ id: String(g.id), name: g.name }))}
                   selected={folderPermissions.group_ids}
                   onChange={canManage(user) ? (selected) => setFolderPermissions(prev => ({ ...prev, group_ids: selected })) : undefined}
                   disabled={!canManage(user)}
@@ -1471,7 +1531,7 @@ function DepartmentsView({ user, showConfirm, showNotification }: { user: User; 
 
   const handleUpdate = async () => {
     if (!editingDept || !editingDept.name.trim()) return;
-    await fetch(`/api/departments/${editingDept.id}`, {
+    await fetch(`/api/departments/${editingDept.id}?userId=${user?.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(editingDept)
@@ -1487,7 +1547,7 @@ function DepartmentsView({ user, showConfirm, showNotification }: { user: User; 
       message: '确定要删除这个部门吗？',
       type: 'danger',
       onConfirm: async () => {
-        await fetch(`/api/departments/${id}`, { method: 'DELETE' });
+        await fetch(`/api/departments/${id}?userId=${user?.id}`, { method: 'DELETE' });
         showNotification('success', '部门已删除');
         fetchDepartments();
       }
@@ -1623,11 +1683,16 @@ function GroupsView({ user, showConfirm, showNotification }: { user: User; showC
   const [memberSearchTerm, setMemberSearchTerm] = useState('');
 
   const isAdmin = user.effective_role === 'admin' || user.role === 'admin' || user.permissions?.includes('manage_users');
+  const isManager = user.effective_role === 'manager' || user.role === 'manager';
 
   const fetchGroups = async () => {
     const res = await fetch('/api/groups');
     const data = await res.json();
-    const groupsData = Array.isArray(data) ? data : [];
+    let groupsData = Array.isArray(data) ? data : [];
+    // 部门经理只能看到自己部门的小组
+    if (isManager && user.department_ids?.length) {
+      groupsData = groupsData.filter((g: any) => g.department_id && user.department_ids.includes(g.department_id));
+    }
     setAllGroups(groupsData);
     setGroups(groupsData);
   };
@@ -1679,12 +1744,17 @@ function GroupsView({ user, showConfirm, showNotification }: { user: User; showC
     if (!newGroup.name.trim()) return;
     const deptId = newGroup.department_id ? parseInt(newGroup.department_id) : null;
     
-    const res = await fetch('/api/groups', {
+    const res = await fetch(`/api/groups?userId=${user.id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newGroup.name, department_id: deptId })
     });
     const result = await res.json();
+    
+    if (!result.success) {
+      showNotification('error', result.message || '创建失败');
+      return;
+    }
     
     if (result.success && deptId) {
       const usersRes = await fetch('/api/users');
@@ -1694,7 +1764,7 @@ function GroupsView({ user, showConfirm, showNotification }: { user: User; showC
         return userDepts.includes(deptId);
       });
       if (sameDeptUsers.length > 0) {
-        await fetch(`/api/groups/${result.id}/members`, {
+        await fetch(`/api/groups/${result.id}/members?userId=${user.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_ids: sameDeptUsers.map((u: any) => u.id) })
@@ -1711,11 +1781,16 @@ function GroupsView({ user, showConfirm, showNotification }: { user: User; showC
 
   const handleUpdate = async () => {
     if (!editingGroup) return;
-    await fetch(`/api/groups/${editingGroup.id}`, {
+    const res = await fetch(`/api/groups/${editingGroup.id}?userId=${user?.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: editingGroup.name, department_id: editingGroup.department_id || null })
     });
+    const data = await res.json();
+    if (!res.ok) {
+      showNotification('error', data.message || '更新失败');
+      return;
+    }
     showNotification('success', '分组更新成功');
     setEditingGroup(null);
     fetchGroups();
@@ -1727,7 +1802,12 @@ function GroupsView({ user, showConfirm, showNotification }: { user: User; showC
       message: '确定要删除这个分组吗？',
       type: 'danger',
       onConfirm: async () => {
-        await fetch(`/api/groups/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/groups/${id}?userId=${user?.id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) {
+          showNotification('error', data.message || '删除失败');
+          return;
+        }
         showNotification('success', '分组已删除');
         fetchGroups();
       }
@@ -1745,11 +1825,16 @@ function GroupsView({ user, showConfirm, showNotification }: { user: User; showC
 
   const handleSaveMembers = async () => {
     if (!editingGroup) return;
-    await fetch(`/api/groups/${editingGroup.id}/members`, {
+    const res = await fetch(`/api/groups/${editingGroup.id}/members?userId=${user?.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_ids: groupMemberIds })
     });
+    const data = await res.json();
+    if (!res.ok) {
+      showNotification('error', data.message || '保存失败');
+      return;
+    }
     showNotification('success', '成员更新成功');
     setEditingMembers(false);
     setEditingGroup(null);
@@ -1763,12 +1848,12 @@ function GroupsView({ user, showConfirm, showNotification }: { user: User; showC
           <h2 className="text-2xl font-bold text-slate-800">小组管理</h2>
           <p className="text-slate-500">管理系统中的小组</p>
         </div>
-        {isAdmin && (
+        {isAdmin || isManager ? (
           <button onClick={() => setShowAdd(true)} className="px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 flex items-center gap-2">
             <Plus size={18} />
             新增小组
           </button>
-        )}
+        ) : null}
       </div>
 
       {/* Search and Filter */}
@@ -1820,7 +1905,7 @@ function GroupsView({ user, showConfirm, showNotification }: { user: User; showC
                 <td className="py-4 px-6 text-slate-500">
                   {group.member_count !== undefined ? `${group.member_count} 人` : '-'}
                 </td>
-                {isAdmin && (
+                {(isAdmin || (isManager && user.department_ids?.includes(group.department_id))) && (
                   <td className="py-4 px-6">
                     <div className="flex gap-2">
                       <button onClick={() => handleOpenMembers(group)} className="text-slate-400 hover:text-green-500" title="管理成员">
@@ -2101,7 +2186,7 @@ function AccountsView({ user, showConfirm, showNotification, onUserUpdate }: { u
     const groupIds = Array.isArray(editingUser.group_ids) 
       ? editingUser.group_ids.map(id => parseInt(String(id))) 
       : [];
-    const res = await fetch(`/api/users/${editingUser.id}`, {
+    const res = await fetch(`/api/users/${editingUser.id}?userId=${user?.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2139,7 +2224,7 @@ function AccountsView({ user, showConfirm, showNotification, onUserUpdate }: { u
       message: '确定要删除这个用户吗？',
       type: 'danger',
       onConfirm: async () => {
-        await fetch(`/api/users/${id}`, { method: 'DELETE' });
+        await fetch(`/api/users/${id}?userId=${user?.id}`, { method: 'DELETE' });
         showNotification('success', '用户已删除');
         fetchUsers();
       }
@@ -2406,7 +2491,7 @@ function RolesView({ user, showConfirm, showNotification }: { user: User; showCo
 
   const handleUpdate = async () => {
     if (!editingRole) return;
-    await fetch(`/api/roles/${editingRole.id}`, {
+    await fetch(`/api/roles/${editingRole.id}?userId=${user?.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(editingRole)
@@ -2422,7 +2507,7 @@ function RolesView({ user, showConfirm, showNotification }: { user: User; showCo
       message: '确定要删除这个角色吗？',
       type: 'danger',
       onConfirm: async () => {
-        await fetch(`/api/roles/${id}`, { method: 'DELETE' });
+        await fetch(`/api/roles/${id}?userId=${user?.id}`, { method: 'DELETE' });
         showNotification('success', '角色已删除');
         fetchRoles();
       }
@@ -2598,30 +2683,39 @@ function OrganizationView({ user, showNotification }: { user: User; showNotifica
     fetchDepartments();
     fetchGroups();
     fetchMyOrganization();
-  }, []);
+  }, [user.id]);
 
   const fetchDepartments = async () => {
     const res = await fetch('/api/departments');
     const data = await res.json();
-    const allDepts = Array.isArray(data) ? data : [];
-    if (isAdmin) {
-      setDepartments(allDepts);
-    } else {
+    let allDepts = Array.isArray(data) ? data : [];
+    
+    // 部门经理能看到自己部门的所有部门
+    if (user.role === 'manager' && user.department_ids?.length) {
+      allDepts = allDepts.filter((d: any) => user.department_ids.includes(d.id));
+    } else if (!isAdmin) {
       const userDeptIds = user.department_ids || [];
       setDepartments(allDepts.filter(d => userDeptIds.includes(d.id)));
     }
+    
+    setDepartments(allDepts);
   };
 
   const fetchGroups = async () => {
     const res = await fetch('/api/groups');
     const data = await res.json();
-    const allGroups = Array.isArray(data) ? data : [];
-    if (isAdmin) {
-      setGroups(allGroups);
-    } else {
+    let allGroups = Array.isArray(data) ? data : [];
+    
+    // 部门经理能看到自己部门的所有小组
+    if (user.role === 'manager' && user.department_ids?.length) {
+      allGroups = allGroups.filter((g: any) => g.department_id && user.department_ids.includes(g.department_id));
+    } else if (!isAdmin) {
       const userGroupIds = user.group_ids || [];
-      setGroups(allGroups.filter(g => userGroupIds.includes(g.id)));
+      const userDeptIds = user.department_ids || [];
+      allGroups = allGroups.filter((g: any) => userGroupIds.includes(g.id) || (g.department_id && userDeptIds.includes(g.department_id)));
     }
+    
+    setGroups(allGroups);
   };
 
   const fetchMyOrganization = async () => {
