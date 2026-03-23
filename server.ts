@@ -12,8 +12,16 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3100;
 
+// Data directory (use persistent disk on Render)
+const dataDir = process.env.DATA_DIR || __dirname;
+const dbPath = process.env.DB_PATH || path.join(dataDir, "edu_transfer.db");
+
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
 // Ensure uploads directory exists
-const uploadDir = path.join(__dirname, "uploads");
+const uploadDir = process.env.UPLOAD_DIR || path.join(dataDir, "uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -44,7 +52,8 @@ const upload = multer({
   preservePath: true,
 });
 
-const db = new Database("edu_transfer.db");
+const db = new Database(dbPath);
+console.log(`[DB] Database: ${dbPath}`);
 
 // Initialize database
 db.exec(`
