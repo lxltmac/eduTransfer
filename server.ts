@@ -113,9 +113,9 @@ async function startServer() {
 
   const roleCount = (await asyncQueryOne("SELECT COUNT(*) as count FROM roles"))?.count || 0;
   if (roleCount === 0) {
-    await asyncRun("INSERT INTO roles (name, description, permissions) VALUES (?, ?, ?)", ["admin", "系统管理员", JSON.stringify(["view_dashboard", "manage_classes", "manage_files", "manage_groups", "manage_users", "manage_roles"])]);
-    await asyncRun("INSERT INTO roles (name, description, permissions) VALUES (?, ?, ?)", ["teacher", "普通教师", JSON.stringify(["view_dashboard", "manage_classes", "manage_files", "manage_groups"])]);
-    await asyncRun("INSERT INTO roles (name, description, permissions) VALUES (?, ?, ?)", ["student", "学生", JSON.stringify(["manage_files"])]);
+    await asyncRun("INSERT INTO roles (name, description, permissions) VALUES (?, ?, ?)", ["admin", "系统管理员", JSON.stringify(["view_dashboard", "manage_departments", "manage_users", "manage_groups", "manage_folders", "manage_files", "manage_roles", "manage_settings", "upload_files", "download_files", "access_files", "view_folders"])]);
+    await asyncRun("INSERT INTO roles (name, description, permissions) VALUES (?, ?, ?)", ["manager", "部门管理员", JSON.stringify(["view_dashboard", "manage_own_department", "manage_own_groups", "manage_own_folders", "upload_files", "download_files", "manage_folders", "access_files", "view_folders", "manage_files", "manage_groups"])]);
+    await asyncRun("INSERT INTO roles (name, description, permissions) VALUES (?, ?, ?)", ["member", "普通成员", JSON.stringify(["view_folders", "upload_files", "download_files", "access_files"])]);
   }
 
   const studentCount = (await asyncQueryOne("SELECT COUNT(*) as count FROM students"))?.count || 0;
