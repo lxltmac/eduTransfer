@@ -1,23 +1,16 @@
 import express from "express";
-import Database from "better-sqlite3";
 import path from "path";
 import multer from "multer";
 import * as fs from "fs";
 import { fileURLToPath } from "url";
 import * as crypto from "crypto";
 import * as XLSX from "xlsx";
+import { asyncQuery, asyncQueryOne, asyncRun, asyncExec, initDatabase, isProduction } from "./src/lib/db.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3100;
-
-if (process.env.DATABASE_URL) {
-  console.error("[ERROR] PostgreSQL not configured. This codebase uses SQLite synchronously.");
-  console.error("[HINT] For free PostgreSQL: Use Neon (https://neon.tech) - requires async refactor.");
-  console.error("[ALT] For free persistent SQLite: Use Railway paid plan or Coolify.");
-}
-
 const dataDir = process.env.DATA_DIR || __dirname;
 const dbPath = process.env.DB_PATH || path.join(dataDir, "edu_transfer.db");
 
