@@ -38,10 +38,12 @@ async function startServer() {
   await initDatabase();
 
   // PostgreSQL uses SERIAL + TIMESTAMP, SQLite uses AUTOINCREMENT + DATETIME
+  console.log("[DEBUG] isProduction:", isProduction);
   const idColumnType = isProduction ? "SERIAL PRIMARY KEY" : "INTEGER PRIMARY KEY AUTOINCREMENT";
   const timestampType = isProduction ? "TIMESTAMP" : "DATETIME";
+  console.log("[DEBUG] timestampType:", timestampType);
   
-  await asyncExec(`
+  const createTablesSQL = `
     CREATE TABLE IF NOT EXISTS departments (
       id ${idColumnType},
       name TEXT NOT NULL,
@@ -117,7 +119,8 @@ async function startServer() {
       value TEXT NOT NULL,
       updated_at ${timestampType} DEFAULT CURRENT_TIMESTAMP
     );
-  `);
+  `;
+  await asyncExec(createTablesSQL);
 
   const roleCount = (await asyncQueryOne("SELECT COUNT(*) as count FROM roles"))?.count || 0;
   if (roleCount === 0) {
