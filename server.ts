@@ -218,6 +218,25 @@ async function startServer() {
     res.json(await asyncQuery("SELECT id, username, role, name, avatar FROM users"));
   });
 
+  app.put("/api/users/:id", async (req, res) => {
+    const { name, role, avatar, password } = req.body;
+    try {
+      if (password && password.length > 0) {
+        await asyncRun("UPDATE users SET name = ?, role = ?, avatar = ?, password = ? WHERE id = ?", [name, role, avatar, password, req.params.id]);
+      } else {
+        await asyncRun("UPDATE users SET name = ?, role = ?, avatar = ? WHERE id = ?", [name, role, avatar, req.params.id]);
+      }
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ success: false, message: "更新失败" });
+    }
+  });
+
+  app.delete("/api/users/:id", async (req, res) => {
+    await asyncRun("DELETE FROM users WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  });
+
   app.get("/api/roles", async (req, res) => {
     const roles = await asyncQuery("SELECT * FROM roles");
     roles.forEach((r: any) => r.permissions = JSON.parse(r.permissions));
