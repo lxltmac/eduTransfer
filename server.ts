@@ -52,28 +52,22 @@ async function startServer() {
       id ${idColumnType},
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
-      role TEXT DEFAULT 'teacher',
+      role TEXT DEFAULT 'member',
       name TEXT NOT NULL,
       avatar TEXT,
-      student_id INTEGER
+      student_id INTEGER,
+      department_ids TEXT,
+      avatar_url TEXT
     );
-    CREATE TABLE IF NOT EXISTS classes (
+    CREATE TABLE IF NOT EXISTS departments (
       id ${idColumnType},
       name TEXT NOT NULL,
-      grade TEXT,
-      student_count INTEGER DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS students (
-      id ${idColumnType},
-      name TEXT NOT NULL,
-      student_id TEXT UNIQUE,
-      class_id INTEGER,
-      group_id INTEGER
+      description TEXT
     );
     CREATE TABLE IF NOT EXISTS groups (
       id ${idColumnType},
       name TEXT NOT NULL,
-      class_id INTEGER
+      department_id INTEGER
     );
     CREATE TABLE IF NOT EXISTS files (
       id ${idColumnType},
@@ -85,13 +79,22 @@ async function startServer() {
       uploaded_at DATETIME DEFAULT ${nowFunc},
       uploader_name TEXT,
       uploader_username TEXT,
-      folder_id INTEGER
+      folder_id INTEGER,
+      uploader_id INTEGER,
+      role_ids TEXT,
+      group_ids TEXT,
+      department_ids TEXT
     );
     CREATE TABLE IF NOT EXISTS folders (
       id ${idColumnType},
       name TEXT NOT NULL,
       parent_id INTEGER,
-      created_at DATETIME DEFAULT ${nowFunc}
+      created_at DATETIME DEFAULT ${nowFunc},
+      role_ids TEXT,
+      group_ids TEXT,
+      department_ids TEXT,
+      creator_id INTEGER,
+      is_public INTEGER DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS menus (
       id ${idColumnType},
@@ -108,6 +111,14 @@ async function startServer() {
       key TEXT UNIQUE NOT NULL,
       value TEXT,
       updated_at DATETIME DEFAULT ${nowFunc}
+    );
+    CREATE TABLE IF NOT EXISTS user_roles (
+      user_id INTEGER,
+      role_id INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS user_groups (
+      user_id INTEGER,
+      group_id INTEGER
     );
   `);
 
@@ -241,6 +252,168 @@ async function startServer() {
     const roles = await asyncQuery("SELECT * FROM roles");
     roles.forEach((r: any) => r.permissions = JSON.parse(r.permissions));
     res.json(roles);
+  });
+
+  app.post("/api/roles", async (req, res) => {
+    const { name, description, permissions } = req.body;
+    await asyncRun("INSERT INTO roles (name, description, permissions) VALUES (?, ?, ?)", [name, description, JSON.stringify(permissions)]);
+    res.json({ success: true });
+  });
+
+  app.put("/api/roles/:id", async (req, res) => {
+    const { name, description, permissions } = req.body;
+    await asyncRun("UPDATE roles SET name = ?, description = ?, permissions = ? WHERE id = ?", [name, description, JSON.stringify(permissions), req.params.id]);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/roles/:id", async (req, res) => {
+    await asyncRun("DELETE FROM roles WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  });
+
+  app.get("/api/departments", async (req, res) => {
+    res.json(await asyncQuery("SELECT * FROM departments ORDER BY id"));
+  });
+
+  app.post("/api/departments", async (req, res) => {
+    const { name, description } = req.body;
+    const result = await asyncRun("INSERT INTO departments (name, description) VALUES (?, ?)", [name, description || ""]);
+    res.json({ success: true, id: result.lastID });
+  });
+
+  app.put("/api/departments/:id", async (req, res) => {
+    const { name, description } = req.body;
+    await asyncRun("UPDATE departments SET name = ?, description = ? WHERE id = ?", [name, description || "", req.params.id]);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/departments/:id", async (req, res) => {
+    await asyncRun("DELETE FROM departments WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  });
+
+  app.get("/api/folders", async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.json([]);
+    const user = await asyncQueryOne("SELECT * FROM users WHERE id = ?", [userId]);
+    if (!user) return res.json([]);
+    let folders;
+    if (user.role === "admin") {
+      folders = await asyncQuery("SELECT * FROM folders ORDER BY created_at DESC");
+    } else if (user.role === "manager") {
+      folders = await asyncQuery("SELECT * FROM folders ORDER BY created_at DESC");
+    } else {
+      folders = await asyncQuery("SELECT * FROM folders ORDER BY created_at DESC");
+    }
+    res.json(folders);
+  });
+
+  app.post("/api/folders", async (req, res) => {
+    const { name, parent_id, role_ids, group_ids, department_ids, userId } = req.body;
+    const result = await asyncRun("INSERT INTO folders (name, parent_id, role_ids, group_ids, department_ids, creator_id) VALUES (?, ?, ?, ?, ?, ?)", [name.trim(), parent_id || null, role_ids || "[]", group_ids || "[]", department_ids || "[]", userId]);
+    res.json({ success: true, id: result.lastID });
+  });
+
+  app.put("/api/folders/:id", async (req, res) => {
+    const { name, parent_id, role_ids, group_ids, department_ids } = req.body;
+    if (name) await asyncRun("UPDATE folders SET name = ? WHERE id = ?", [name.trim(), req.params.id]);
+    if (parent_id !== undefined) await asyncRun("UPDATE folders SET parent_id = ? WHERE id = ?", [parent_id, req.params.id]);
+    if (role_ids !== undefined) await asyncRun("UPDATE folders SET role_ids = ? WHERE id = ?", [JSON.stringify(role_ids), req.params.id]);
+    if (group_ids !== undefined) await asyncRun("UPDATE folders SET group_ids = ? WHERE id = ?", [JSON.stringify(group_ids), req.params.id]);
+    if (department_ids !== undefined) await asyncRun("UPDATE folders SET department_ids = ? WHERE id = ?", [JSON.stringify(department_ids), req.params.id]);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/folders/:id", async (req, res) => {
+    await asyncRun("DELETE FROM files WHERE folder_id = ?", [req.params.id]);
+    await asyncRun("DELETE FROM folders WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  });
+
+  app.get("/api/groups", async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.json([]);
+    const user = await asyncQueryOne("SELECT * FROM users WHERE id = ?", [userId]);
+    if (!user) return res.json([]);
+    if (user.role === "admin") {
+      res.json(await asyncQuery("SELECT * FROM groups"));
+    } else {
+      res.json(await asyncQuery("SELECT * FROM groups"));
+    }
+  });
+
+  app.get("/api/groups/:groupId/users", async (req, res) => {
+    const users = await asyncQuery("SELECT u.id, u.username, u.name, u.avatar FROM users u JOIN user_groups ug ON u.id = ug.user_id WHERE ug.group_id = ?", [req.params.groupId]);
+    res.json(users);
+  });
+
+  app.post("/api/groups/:id/members", async (req, res) => {
+    const { userIds } = req.body;
+    for (const uid of userIds) {
+      await asyncRun("INSERT OR IGNORE INTO user_groups (user_id, group_id) VALUES (?, ?)", [uid, req.params.id]);
+    }
+    res.json({ success: true });
+  });
+
+  app.delete("/api/groups/:id/members", async (req, res) => {
+    const { userId } = req.query;
+    if (userId) {
+      await asyncRun("DELETE FROM user_groups WHERE group_id = ? AND user_id = ?", [req.params.id, userId]);
+    }
+    res.json({ success: true });
+  });
+
+  app.put("/api/groups/:groupId", async (req, res) => {
+    const { name, department_id } = req.body;
+    await asyncRun("UPDATE groups SET name = ?, department_id = ? WHERE id = ?", [name, department_id || null, req.params.groupId]);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/groups/:groupId", async (req, res) => {
+    await asyncRun("DELETE FROM user_groups WHERE group_id = ?", [req.params.groupId]);
+    await asyncRun("DELETE FROM groups WHERE id = ?", [req.params.groupId]);
+    res.json({ success: true });
+  });
+
+  app.post("/api/files/batch-delete", async (req, res) => {
+    const { fileIds } = req.body;
+    for (const id of fileIds) {
+      await asyncRun("DELETE FROM files WHERE id = ?", [id]);
+    }
+    res.json({ success: true });
+  });
+
+  app.post("/api/files/move", async (req, res) => {
+    const { fileId, folderId } = req.body;
+    await asyncRun("UPDATE files SET folder_id = ? WHERE id = ?", [folderId || null, fileId]);
+    res.json({ success: true });
+  });
+
+  app.get("/api/settings", async (req, res) => {
+    const settings = await asyncQuery("SELECT * FROM settings");
+    const obj: any = {};
+    settings.forEach((s: any) => obj[s.key] = s.value);
+    res.json(obj);
+  });
+
+  app.put("/api/settings", async (req, res) => {
+    const settings = req.body;
+    for (const [key, value] of Object.entries(settings)) {
+      await asyncRun("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)", [key, value as string]);
+    }
+    res.json({ success: true });
+  });
+
+  app.get("/api/my-organization", async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.json({});
+    const user = await asyncQueryOne("SELECT * FROM users WHERE id = ?", [userId]);
+    if (!user) return res.json({});
+    const deptIds = user.department_ids ? JSON.parse(user.department_ids as string) : [];
+    if (deptIds.length === 0) return res.json({});
+    const departments = await asyncQuery("SELECT * FROM departments WHERE id IN (" + deptIds.map(() => "?").join(",") + ")", deptIds);
+    const groups = await asyncQuery("SELECT g.* FROM groups g JOIN departments d ON g.department_id = d.id WHERE d.id IN (" + deptIds.map(() => "?").join(",") + ")", deptIds);
+    res.json({ departments, groups });
   });
 
   app.use(express.static(path.join(__dirname, "dist"), { index: ["index.html"] }));
