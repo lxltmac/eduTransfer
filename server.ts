@@ -64,6 +64,19 @@ async function startServer() {
       name TEXT NOT NULL,
       description TEXT
     );
+    CREATE TABLE IF NOT EXISTS classes (
+      id ${idColumnType},
+      name TEXT NOT NULL,
+      grade TEXT,
+      student_count INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS students (
+      id ${idColumnType},
+      name TEXT NOT NULL,
+      student_id TEXT UNIQUE,
+      class_id INTEGER,
+      group_id INTEGER
+    );
     CREATE TABLE IF NOT EXISTS groups (
       id ${idColumnType},
       name TEXT NOT NULL,
