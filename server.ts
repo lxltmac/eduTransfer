@@ -39,21 +39,22 @@ async function startServer() {
 
   // PostgreSQL uses SERIAL, SQLite uses AUTOINCREMENT
   const idColumnType = isProduction ? "SERIAL PRIMARY KEY" : "INTEGER PRIMARY KEY AUTOINCREMENT";
-  const nowFunc = isProduction ? "NOW()" : "CURRENT_TIMESTAMP";
+  const nowFunc = isProduction ? "CURRENT_TIMESTAMP" : "CURRENT_TIMESTAMP";
+  const timestampType = isProduction ? "TIMESTAMP" : "DATETIME";
   
   await asyncExec(`
     CREATE TABLE IF NOT EXISTS departments (
       id ${idColumnType},
       name TEXT NOT NULL,
       description TEXT,
-      created_at DATETIME DEFAULT ${nowFunc}
+      created_at ${timestampType} DEFAULT ${nowFunc}
     );
     CREATE TABLE IF NOT EXISTS roles (
       id ${idColumnType},
       name TEXT UNIQUE NOT NULL,
       description TEXT,
       permissions TEXT NOT NULL,
-      created_at DATETIME DEFAULT ${nowFunc}
+      created_at ${timestampType} DEFAULT ${nowFunc}
     );
     CREATE TABLE IF NOT EXISTS users (
       id ${idColumnType},
@@ -65,19 +66,19 @@ async function startServer() {
       avatar_url TEXT,
       department_id INTEGER,
       department_ids TEXT,
-      created_at DATETIME DEFAULT ${nowFunc}
+      created_at ${timestampType} DEFAULT ${nowFunc}
     );
     CREATE TABLE IF NOT EXISTS groups (
       id ${idColumnType},
       name TEXT NOT NULL,
       department_id INTEGER,
-      created_at DATETIME DEFAULT ${nowFunc}
+      created_at ${timestampType} DEFAULT ${nowFunc}
     );
     CREATE TABLE IF NOT EXISTS folders (
       id ${idColumnType},
       name TEXT NOT NULL,
       parent_id INTEGER,
-      created_at DATETIME DEFAULT ${nowFunc},
+      created_at ${timestampType} DEFAULT ${nowFunc},
       role_ids TEXT,
       group_ids TEXT,
       department_ids TEXT,
@@ -90,7 +91,7 @@ async function startServer() {
       file_type TEXT NOT NULL,
       file_url TEXT,
       file_size INTEGER,
-      upload_time DATETIME DEFAULT ${nowFunc},
+      upload_time ${timestampType} DEFAULT ${nowFunc},
       uploader_name TEXT,
       uploader_username TEXT,
       uploader_id INTEGER,
@@ -103,19 +104,19 @@ async function startServer() {
       id ${idColumnType},
       user_id INTEGER NOT NULL,
       role_id INTEGER NOT NULL,
-      created_at DATETIME DEFAULT ${nowFunc}
+      created_at ${timestampType} DEFAULT ${nowFunc}
     );
     CREATE TABLE IF NOT EXISTS user_groups (
       id ${idColumnType},
       user_id INTEGER NOT NULL,
       group_id INTEGER NOT NULL,
-      created_at DATETIME DEFAULT ${nowFunc}
+      created_at ${timestampType} DEFAULT ${nowFunc}
     );
     CREATE TABLE IF NOT EXISTS app_settings (
       id ${idColumnType},
       key TEXT UNIQUE NOT NULL,
       value TEXT NOT NULL,
-      updated_at DATETIME DEFAULT ${nowFunc}
+      updated_at ${timestampType} DEFAULT ${nowFunc}
     );
   `);
       created_at DATETIME DEFAULT ${nowFunc}
