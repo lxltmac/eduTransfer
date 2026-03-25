@@ -42,11 +42,18 @@ async function startServer() {
   const nowFunc = isProduction ? "NOW()" : "CURRENT_TIMESTAMP";
   
   await asyncExec(`
+    CREATE TABLE IF NOT EXISTS departments (
+      id ${idColumnType},
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT ${nowFunc}
+    );
     CREATE TABLE IF NOT EXISTS roles (
       id ${idColumnType},
       name TEXT UNIQUE NOT NULL,
       description TEXT,
-      permissions TEXT NOT NULL
+      permissions TEXT NOT NULL,
+      created_at DATETIME DEFAULT ${nowFunc}
     );
     CREATE TABLE IF NOT EXISTS users (
       id ${idColumnType},
@@ -55,48 +62,16 @@ async function startServer() {
       role TEXT DEFAULT 'member',
       name TEXT NOT NULL,
       avatar TEXT,
-      student_id INTEGER,
+      avatar_url TEXT,
+      department_id INTEGER,
       department_ids TEXT,
-      avatar_url TEXT
-    );
-    CREATE TABLE IF NOT EXISTS departments (
-      id ${idColumnType},
-      name TEXT NOT NULL,
-      description TEXT
-    );
-    CREATE TABLE IF NOT EXISTS classes (
-      id ${idColumnType},
-      name TEXT NOT NULL,
-      grade TEXT,
-      student_count INTEGER DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS students (
-      id ${idColumnType},
-      name TEXT NOT NULL,
-      student_id TEXT UNIQUE,
-      class_id INTEGER,
-      group_id INTEGER
+      created_at DATETIME DEFAULT ${nowFunc}
     );
     CREATE TABLE IF NOT EXISTS groups (
       id ${idColumnType},
       name TEXT NOT NULL,
-      department_id INTEGER
-    );
-    CREATE TABLE IF NOT EXISTS files (
-      id ${idColumnType},
-      student_id INTEGER,
-      name TEXT NOT NULL,
-      file_type TEXT NOT NULL,
-      file_url TEXT,
-      file_size INTEGER,
-      uploaded_at DATETIME DEFAULT ${nowFunc},
-      uploader_name TEXT,
-      uploader_username TEXT,
-      folder_id INTEGER,
-      uploader_id INTEGER,
-      role_ids TEXT,
-      group_ids TEXT,
-      department_ids TEXT
+      department_id INTEGER,
+      created_at DATETIME DEFAULT ${nowFunc}
     );
     CREATE TABLE IF NOT EXISTS folders (
       id ${idColumnType},
@@ -106,17 +81,43 @@ async function startServer() {
       role_ids TEXT,
       group_ids TEXT,
       department_ids TEXT,
-      creator_id INTEGER,
+      owner_id INTEGER,
       is_public INTEGER DEFAULT 0
     );
-    CREATE TABLE IF NOT EXISTS menus (
+    CREATE TABLE IF NOT EXISTS files (
       id ${idColumnType},
       name TEXT NOT NULL,
-      route TEXT,
-      icon TEXT,
-      parent_id INTEGER,
-      order_index INTEGER DEFAULT 0,
-      enabled INTEGER DEFAULT 1,
+      file_type TEXT NOT NULL,
+      file_url TEXT,
+      file_size INTEGER,
+      upload_time DATETIME DEFAULT ${nowFunc},
+      uploader_name TEXT,
+      uploader_username TEXT,
+      uploader_id INTEGER,
+      folder_id INTEGER,
+      role_ids TEXT,
+      group_ids TEXT,
+      department_ids TEXT
+    );
+    CREATE TABLE IF NOT EXISTS user_roles (
+      id ${idColumnType},
+      user_id INTEGER NOT NULL,
+      role_id INTEGER NOT NULL,
+      created_at DATETIME DEFAULT ${nowFunc}
+    );
+    CREATE TABLE IF NOT EXISTS user_groups (
+      id ${idColumnType},
+      user_id INTEGER NOT NULL,
+      group_id INTEGER NOT NULL,
+      created_at DATETIME DEFAULT ${nowFunc}
+    );
+    CREATE TABLE IF NOT EXISTS app_settings (
+      id ${idColumnType},
+      key TEXT UNIQUE NOT NULL,
+      value TEXT NOT NULL,
+      updated_at DATETIME DEFAULT ${nowFunc}
+    );
+  `);
       created_at DATETIME DEFAULT ${nowFunc}
     );
     CREATE TABLE IF NOT EXISTS settings (
@@ -142,16 +143,10 @@ async function startServer() {
     await asyncRun("INSERT INTO roles (name, description, permissions) VALUES (?, ?, ?)", ["member", "普通成员", JSON.stringify(["view_folders", "upload_files", "download_files", "access_files"])]);
   }
 
-  const studentCount = (await asyncQueryOne("SELECT COUNT(*) as count FROM students"))?.count || 0;
-  if (studentCount === 0) {
-    const result = await asyncRun("INSERT INTO classes (name, grade, student_count) VALUES (?, ?, ?)", ["高二1班", "高二", 3]);
-    const classId = result.lastID;
-    await asyncRun("INSERT INTO students (name, student_id, class_id) VALUES (?, ?, ?)", ["王小明", "S001", classId]);
-    await asyncRun("INSERT INTO students (name, student_id, class_id) VALUES (?, ?, ?)", ["李华", "S002", classId]);
-    await asyncRun("INSERT INTO students (name, student_id, class_id) VALUES (?, ?, ?)", ["张三", "S003", classId]);
+  const userCount = (await asyncQueryOne("SELECT COUNT(*) as count FROM users"))?.count || 0;
+  if (userCount === 0) {
+    await asyncRun("INSERT INTO users (username, password, role, name, avatar) VALUES (?, ?, ?, ?, ?)", ["admin", "admin123", "admin", "系统管理员", "https://picsum.photos/seed/admin/100/100"]);
   }
-
-  await asyncExec(`INSERT OR IGNORE INTO users (username, password, role, name, avatar) VALUES ('admin', 'admin123', 'admin', '系统管理员', 'https://picsum.photos/seed/admin/100/100')`);
 
   app.post("/api/login", async (req, res) => {
     const { username, password } = req.body;
@@ -160,40 +155,19 @@ async function startServer() {
     else res.status(401).json({ success: false, message: "用户名或密码错误" });
   });
 
-  app.get("/api/classes", async (req, res) => res.json(await asyncQuery("SELECT * FROM classes")));
-  app.delete("/api/classes/:id", async (req, res) => {
-    await asyncRun("DELETE FROM classes WHERE id = ?", [req.params.id]);
-    res.json({ success: true });
-  });
-
-  app.post("/api/classes/import", upload.single("file"), async (req, res) => {
-    const file = req.file;
-    if (!file) return res.status(400).json({ success: false, message: "请选择文件" });
-    try {
-      const fileContent = fs.readFileSync(file.path);
-      const workbook = XLSX.read(fileContent, { type: "buffer" });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-      res.json({ success: true, rows: (jsonData as any[]).length });
-    } catch (e) {
-      res.status(500).json({ success: false, message: "导入失败" });
-    }
-  });
-
   app.get("/api/files", async (req, res) => {
-    const { userId } = req.query;
+    const { userId, folder_id } = req.query;
     if (!userId) return res.json([]);
     const user = await asyncQueryOne("SELECT * FROM users WHERE id = ?", [userId]);
     if (!user) return res.json([]);
-    let query = "SELECT f.*, st.name as student_name FROM files f JOIN students st ON f.student_id = st.id";
-    if (user.role === "student" && user.student_id) {
-      query += " WHERE f.student_id = ?";
-      res.json(await asyncQuery(query, [user.student_id]));
-    } else {
-      query += " ORDER BY f.uploaded_at DESC";
-      res.json(await asyncQuery(query));
+    let query = "SELECT * FROM files";
+    const params: any[] = [];
+    if (folder_id) {
+      query += " WHERE folder_id = ?";
+      params.push(folder_id);
     }
+    query += " ORDER BY upload_time DESC";
+    res.json(await asyncQuery(query, params));
   });
 
   app.post("/api/files", upload.single("file"), async (req, res) => {
@@ -225,22 +199,6 @@ async function startServer() {
     const { name, department_id, userId } = req.body;
     const result = await asyncRun("INSERT INTO groups (name, department_id) VALUES (?, ?)", [name, department_id || null]);
     res.json({ success: true, id: result.lastID });
-  });
-
-  app.get("/api/classes/:classId/students", async (req, res) => {
-    res.json(await asyncQuery("SELECT id, name, student_id FROM students WHERE class_id = ?", [req.params.classId]));
-  });
-
-  app.get("/api/students", async (req, res) => {
-    const { classId } = req.query;
-    if (!classId) return res.json([]);
-    res.json(await asyncQuery("SELECT id, name, student_id FROM students WHERE class_id = ?", [classId]));
-  });
-
-  app.post("/api/students", async (req, res) => {
-    const { classId, name, studentId } = req.body;
-    await asyncRun("INSERT INTO students (class_id, name, student_id) VALUES (?, ?, ?)", [classId, name, studentId]);
-    res.json({ success: true });
   });
 
   app.get("/api/users", async (req, res) => {

@@ -1,12 +1,20 @@
 -- eduTransfer PostgreSQL 初始化脚本
--- 如果需要手动创建，运行此脚本
+
+-- 部门表
+CREATE TABLE IF NOT EXISTS departments (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- 角色表
 CREATE TABLE IF NOT EXISTS roles (
     id SERIAL PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
     description TEXT,
-    permissions TEXT NOT NULL
+    permissions TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 用户表
@@ -17,45 +25,18 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT DEFAULT 'member',
     name TEXT NOT NULL,
     avatar TEXT,
-    student_id INTEGER
+    avatar_url TEXT,
+    department_id INTEGER,
+    department_ids TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 班级表
-CREATE TABLE IF NOT EXISTS classes (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    grade TEXT,
-    student_count INTEGER DEFAULT 0
-);
-
--- 学生表
-CREATE TABLE IF NOT EXISTS students (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    student_id TEXT UNIQUE,
-    class_id INTEGER,
-    group_id INTEGER
-);
-
--- 分组表
+-- 小组表
 CREATE TABLE IF NOT EXISTS groups (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
-    class_id INTEGER
-);
-
--- 文件表
-CREATE TABLE IF NOT EXISTS files (
-    id SERIAL PRIMARY KEY,
-    student_id INTEGER,
-    name TEXT NOT NULL,
-    file_type TEXT NOT NULL,
-    file_url TEXT,
-    file_size INTEGER,
-    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    uploader_name TEXT,
-    uploader_username TEXT,
-    folder_id INTEGER
+    department_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 文件夹表
@@ -63,26 +44,54 @@ CREATE TABLE IF NOT EXISTS folders (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     parent_id INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    role_ids TEXT,
+    group_ids TEXT,
+    department_ids TEXT,
+    owner_id INTEGER,
+    is_public INTEGER DEFAULT 0
 );
 
--- 菜单表
-CREATE TABLE IF NOT EXISTS menus (
+-- 文件表
+CREATE TABLE IF NOT EXISTS files (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
-    route TEXT,
-    icon TEXT,
-    parent_id INTEGER,
-    order_index INTEGER DEFAULT 0,
-    enabled INTEGER DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    file_type TEXT NOT NULL,
+    file_url TEXT,
+    file_size INTEGER,
+    upload_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    uploader_name TEXT,
+    uploader_username TEXT,
+    uploader_id INTEGER,
+    folder_id INTEGER,
+    role_ids TEXT,
+    group_ids TEXT,
+    department_ids TEXT
 );
 
--- 设置表
-CREATE TABLE IF NOT EXISTS settings (
+-- 用户-角色关联表
+CREATE TABLE IF NOT EXISTS user_roles (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    role_id INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, role_id)
+);
+
+-- 用户-小组关联表
+CREATE TABLE IF NOT EXISTS user_groups (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    group_id INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, group_id)
+);
+
+-- 系统设置表
+CREATE TABLE IF NOT EXISTS app_settings (
     id SERIAL PRIMARY KEY,
     key TEXT UNIQUE NOT NULL,
-    value TEXT,
+    value TEXT NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
