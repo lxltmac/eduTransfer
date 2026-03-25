@@ -18,8 +18,15 @@ function convertPlaceholders(sql: string): string {
 
 export async function initDatabase() {
   if (isProduction) {
+    console.log("[DB] DATABASE_URL is:", process.env.DATABASE_URL ? "SET" : "NOT SET");
     postgresPool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-    console.log("[DB] PostgreSQL pool created");
+    console.log("[DB] PostgreSQL pool created, testing connection...");
+    try {
+      await postgresPool!.query("SELECT 1");
+      console.log("[DB] PostgreSQL connection test OK");
+    } catch (e: any) {
+      console.error("[DB] PostgreSQL connection test FAILED:", e.message);
+    }
   } else {
     const dataDir = process.env.DATA_DIR || path.dirname(__filename);
     if (!fs.existsSync(dataDir)) {
@@ -71,9 +78,17 @@ export async function asyncRun(sql: string, ...params: any[]): Promise<{ changes
 
 export async function asyncExec(sql: string) {
   if (isProduction) {
-    const statements = sql.split(";").filter(s => s.trim());
+    const statements = sql.split(";").filter(s => s.trim() && !s.startsWith("--"));
     for (const stmt of statements) {
-      if (stmt.trim()) await postgresPool!.query(convertPlaceholders(stmt));
+      const trimmed = stmt.trim();
+      if (trimmed && !trimmed.startsWith("--")) {
+        try {
+          await postgresPool!.query(trimmed);
+        } catch (e: any) {
+          console.error("[DB] SQL error:", e.message, "Statement:", trimmed.substring(0, 50));
+          throw e;
+        }
+      }
     }
   } else {
     sqliteDb!.exec(sql);
