@@ -199,9 +199,20 @@ async function startServer() {
   app.post("/api/files", upload.single("file"), async (req, res) => {
     const file = req.file;
     if (!file) return res.status(400).json({ success: false, message: "未选择文件" });
-    const { studentId, fileType } = req.body;
+    const { studentId, fileType, role_ids, group_ids, department_ids, uploader_id } = req.body;
     const name = Buffer.from(file.originalname, "latin1").toString("utf8");
-    await asyncRun("INSERT INTO files (student_id, name, file_type, file_url, file_size) VALUES (?, ?, ?, ?, ?)", [studentId, name, fileType, `/uploads/${file.filename}`, file.size]);
+    await asyncRun("INSERT INTO files (student_id, name, file_type, file_url, file_size, role_ids, group_ids, department_ids, uploader_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+      [studentId, name, fileType, `/uploads/${file.filename}`, file.size, role_ids || "[]", group_ids || "[]", department_ids || "[]", uploader_id || null]);
+    res.json({ success: true });
+  });
+
+  app.post("/api/files/upload", upload.single("file"), async (req, res) => {
+    const file = req.file;
+    if (!file) return res.status(400).json({ success: false, message: "未选择文件" });
+    const { studentId, fileType, role_ids, group_ids, department_ids, uploader_id } = req.body;
+    const name = Buffer.from(file.originalname, "latin1").toString("utf8");
+    await asyncRun("INSERT INTO files (student_id, name, file_type, file_url, file_size, role_ids, group_ids, department_ids, uploader_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+      [studentId, name, fileType, `/uploads/${file.filename}`, file.size, role_ids || "[]", group_ids || "[]", department_ids || "[]", uploader_id || null]);
     res.json({ success: true });
   });
 
@@ -240,6 +251,16 @@ async function startServer() {
 
   app.get("/api/users", async (req, res) => {
     res.json(await asyncQuery("SELECT id, username, role, name, avatar FROM users"));
+  });
+
+  app.post("/api/users", async (req, res) => {
+    const { username, password, role, name, avatar } = req.body;
+    try {
+      await asyncRun("INSERT INTO users (username, password, role, name, avatar) VALUES (?, ?, ?, ?, ?)", [username, password, role, name, avatar]);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ success: false, message: "用户名已存在" });
+    }
   });
 
   app.put("/api/users/:id", async (req, res) => {
