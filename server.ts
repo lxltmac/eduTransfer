@@ -119,23 +119,8 @@ async function startServer() {
       updated_at ${timestampType} DEFAULT ${nowFunc}
     );
   `);
-      created_at DATETIME DEFAULT ${nowFunc}
-    );
-    CREATE TABLE IF NOT EXISTS settings (
-      id ${idColumnType},
-      key TEXT UNIQUE NOT NULL,
-      value TEXT,
-      updated_at DATETIME DEFAULT ${nowFunc}
-    );
-    CREATE TABLE IF NOT EXISTS user_roles (
-      user_id INTEGER,
-      role_id INTEGER
-    );
-    CREATE TABLE IF NOT EXISTS user_groups (
-      user_id INTEGER,
-      group_id INTEGER
-    );
-  `);
+
+  const roleCount = (await asyncQueryOne("SELECT COUNT(*) as count FROM roles"))?.count || 0;
 
   const roleCount = (await asyncQueryOne("SELECT COUNT(*) as count FROM roles"))?.count || 0;
   if (roleCount === 0) {
