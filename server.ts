@@ -221,16 +221,10 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.get("/api/groups", async (req, res) => {
-    const { classId } = req.query;
-    if (!classId) return res.json([]);
-    res.json(await asyncQuery("SELECT * FROM groups WHERE class_id = ?", [classId]));
-  });
-
   app.post("/api/groups", async (req, res) => {
-    const { name, classId } = req.body;
-    const result = await asyncRun("INSERT INTO groups (name, class_id) VALUES (?, ?)", [name, classId]);
-    res.json({ success: true, groupId: result.lastID });
+    const { name, department_id, userId } = req.body;
+    const result = await asyncRun("INSERT INTO groups (name, department_id) VALUES (?, ?)", [name, department_id || null]);
+    res.json({ success: true, id: result.lastID });
   });
 
   app.get("/api/classes/:classId/students", async (req, res) => {
@@ -421,6 +415,27 @@ async function startServer() {
     const { fileId, folderId } = req.body;
     await asyncRun("UPDATE files SET folder_id = ? WHERE id = ?", [folderId || null, fileId]);
     res.json({ success: true });
+  });
+
+  app.post("/api/folders/move", async (req, res) => {
+    const { folderId, parentId } = req.body;
+    await asyncRun("UPDATE folders SET parent_id = ? WHERE id = ?", [parentId || null, folderId]);
+    res.json({ success: true });
+  });
+
+  app.post("/api/folders/batch-delete", async (req, res) => {
+    const { folderIds } = req.body;
+    for (const id of folderIds) {
+      await asyncRun("DELETE FROM files WHERE folder_id = ?", [id]);
+      await asyncRun("DELETE FROM folders WHERE id = ?", [id]);
+    }
+    res.json({ success: true });
+  });
+
+  app.post("/api/avatar/upload", upload.single("file"), async (req, res) => {
+    const file = req.file;
+    if (!file) return res.status(400).json({ success: false, message: "未选择文件" });
+    res.json({ success: true, url: `/uploads/${file.filename}` });
   });
 
   app.get("/api/settings", async (req, res) => {
