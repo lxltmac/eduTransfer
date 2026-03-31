@@ -42,7 +42,11 @@ export async function initDatabase() {
 export async function asyncQuery<T = any>(sql: string, ...params: any[]): Promise<T[]> {
   if (isProduction) {
     const pgSql = convertPlaceholders(sql);
-    const result = await postgresPool!.query(pgSql, params);
+    const numericParams = params.map((p: any) => {
+      if (typeof p === "string" && /^\d+$/.test(p)) return parseInt(p, 10);
+      return p;
+    });
+    const result = await postgresPool!.query(pgSql, numericParams);
     return result.rows as T[];
   }
   if (params.length > 0) {
@@ -54,7 +58,11 @@ export async function asyncQuery<T = any>(sql: string, ...params: any[]): Promis
 export async function asyncQueryOne<T = any>(sql: string, ...params: any[]): Promise<T | null> {
   if (isProduction) {
     const pgSql = convertPlaceholders(sql);
-    const result = await postgresPool!.query(pgSql, params);
+    const numericParams = params.map((p: any) => {
+      if (typeof p === "string" && /^\d+$/.test(p)) return parseInt(p, 10);
+      return p;
+    });
+    const result = await postgresPool!.query(pgSql, numericParams);
     return (result.rows[0] as T) || null;
   }
   if (params.length > 0) {
@@ -66,7 +74,11 @@ export async function asyncQueryOne<T = any>(sql: string, ...params: any[]): Pro
 export async function asyncRun(sql: string, ...params: any[]): Promise<{ changes: number; lastID: number }> {
   if (isProduction) {
     const pgSql = convertPlaceholders(sql);
-    const result = await postgresPool!.query(pgSql, params);
+    const numericParams = params.map((p: any) => {
+      if (typeof p === "string" && /^\d+$/.test(p)) return parseInt(p, 10);
+      return p;
+    });
+    const result = await postgresPool!.query(pgSql, numericParams);
     return { changes: result.rowCount || 0, lastID: result.rows[0]?.id || 0 };
   }
   const stmt = sqliteDb!.prepare(sql);
