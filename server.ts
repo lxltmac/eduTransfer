@@ -383,7 +383,7 @@ async function startServer() {
   });
 
   app.get("/api/settings", async (req, res) => {
-    const settings = await asyncQuery("SELECT * FROM settings");
+    const settings = await asyncQuery("SELECT * FROM app_settings");
     const obj: any = {};
     settings.forEach((s: any) => obj[s.key] = s.value);
     res.json(obj);
@@ -392,7 +392,7 @@ async function startServer() {
   app.put("/api/settings", async (req, res) => {
     const settings = req.body;
     for (const [key, value] of Object.entries(settings)) {
-      await asyncRun("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)", [key, value as string]);
+      await asyncRun("INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)", [key, value as string]);
     }
     res.json({ success: true });
   });

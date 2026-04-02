@@ -46,8 +46,13 @@ export async function asyncQuery<T = any>(sql: string, ...params: any[]): Promis
       if (typeof p === "string" && /^\d+$/.test(p)) return parseInt(p, 10);
       return p;
     });
-    const result = await postgresPool!.query(pgSql, numericParams);
-    return result.rows as T[];
+    try {
+      const result = await postgresPool!.query(pgSql, numericParams);
+      return result.rows as T[];
+    } catch (e: any) {
+      console.error("[DB] asyncQuery error:", e.message, "SQL:", pgSql.substring(0, 100));
+      throw e;
+    }
   }
   if (params.length > 0) {
     return sqliteDb!.prepare(sql).all(...params) as T[];
